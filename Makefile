@@ -48,25 +48,25 @@ OBJCOPYFLAGS   += --output-target=binary
 
 TARGET          = hello-world
 
-all: $(TARGET).bin gdbinit
+all: $(TARGET).fae gdbinit
 
-$(TARGET).bin: $(TARGET)-raw.bin padding.bin
+$(TARGET).fae: $(TARGET)-raw.fae padding.fae
 	cat $^ > $@
 
-$(TARGET)-raw.bin: crt0.bin symbols.bin relocation.bin partition.bin
+$(TARGET)-raw.fae: crt0.fae symbols.fae relocation.fae partition.fae
 	cat $^ > $@
 
-crt0.bin: crt0/crt0.c crt0/link.ld crt0/Makefile
+crt0.fae: crt0/crt0.c crt0/link.ld crt0/Makefile
 	make -C crt0 realclean all
 	cp crt0/$@ $@
 
-symbols.bin: $(TARGET).elf scripts/symbols.py
+symbols.fae: $(TARGET).elf scripts/symbols.py
 	exec scripts/symbols.py $< $@
 
-relocation.bin: $(TARGET).elf scripts/relocation.py
+relocation.fae: $(TARGET).elf scripts/relocation.py
 	exec scripts/relocation.py $< $@
 
-partition.bin: $(TARGET).elf
+partition.fae: $(TARGET).elf
 	$(OBJCOPY) $(OBJCOPYFLAGS) $< $@
 	@chmod 644 $@
 
@@ -79,29 +79,29 @@ stdriot/stdriot.o: stdriot/stdriot.c
 main.o: main.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-padding.bin: $(TARGET)-raw.bin scripts/padding.py
+padding.fae: $(TARGET)-raw.fae scripts/padding.py
 	exec scripts/padding.py $< $@
 
-gdbinit: scripts/gdbinit.py crt0/crt0.elf $(TARGET).bin crt0.bin symbols.bin relocation.bin
+gdbinit: scripts/gdbinit.py crt0/crt0.elf $(TARGET).fae crt0.fae symbols.fae relocation.fae
 	exec scripts/gdbinit.py\
             $(shell realpath crt0/crt0.elf)\
             $(shell realpath $(TARGET).elf)\
-            $$(($$(wc -c < crt0.bin)+$$(wc -c < symbols.bin)+$$(wc -c < relocation.bin))) > $@
+            $$(($$(wc -c < crt0.fae)+$$(wc -c < symbols.fae)+$$(wc -c < relocation.fae))) > $@
 
 clean:
 	$(RM)\
             main.o\
             stdriot/stdriot.o\
-            $(TARGET)-raw.bin\
-            padding.bin\
-            crt0.bin\
-            symbols.bin\
-            relocation.bin\
-            partition.bin
+            $(TARGET)-raw.fae\
+            padding.fae\
+            crt0.fae\
+            symbols.fae\
+            relocation.fae\
+            partition.fae
 	make -C crt0 clean
 
 realclean: clean
-	$(RM) $(TARGET).elf $(TARGET).bin gdbinit
+	$(RM) $(TARGET).elf $(TARGET).fae gdbinit
 	make -C crt0 realclean
 
 .PHONY: all clean realclean

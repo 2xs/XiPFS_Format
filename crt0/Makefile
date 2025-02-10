@@ -27,9 +27,9 @@ LDFLAGS         = -Tlink.ld
 OBJCOPYFLAGS    = --input-target=elf32-littlearm
 OBJCOPYFLAGS   += --output-target=binary
 
-all: crt0.bin
+all: crt0.fae
 
-crt0.bin: crt0.elf
+crt0.fae: crt0.elf
 	$(OBJCOPY) $(OBJCOPYFLAGS) $< $@
 	@chmod 644 $@
 
@@ -40,7 +40,7 @@ crt0.o: crt0.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 realclean: clean
-	$(RM) crt0.elf crt0.bin
+	$(RM) crt0.elf crt0.fae
 
 clean:
 	$(RM) crt0.o
