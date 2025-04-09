@@ -21,6 +21,7 @@ CFLAGS         += -mpic-register=sl
 CFLAGS         += -mno-pic-data-is-text-relative
 CFLAGS         += -fPIC
 CFLAGS         += -ffreestanding
+CFLAGS         += -ffunction-sections
 ifdef DEBUG
 CFLAGS         += -Og
 CFLAGS         += -ggdb
@@ -36,6 +37,7 @@ LDFLAGS        += -nolibc
 LDFLAGS        += -nostdlib
 LDFLAGS        += -Tlink.ld
 LDFLAGS        += -Wl,-q
+LDFLAGS        += -Wl,-gc-sections
 # Disable the new linker warning '--warn-rwx-segments' introduced by
 # Binutils 2.39, which causes the following message: "warning:
 # $(TARGET).elf has a LOAD segment with RWX permissions".

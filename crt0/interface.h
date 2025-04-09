@@ -1,5 +1,6 @@
 /*******************************************************************************/
-/*  © Université de Lille, The Pip Development Team (2015-2024)                */
+/*  © Université de Lille, The Pip Development Team (2015-2023)                */
+/*  Copyright (C) 2020-2023 Orange                                             */
 /*                                                                             */
 /*  This software is a computer program whose purpose is to run a minimal,     */
 /*  hypervisor relying on proven properties such as memory isolation.          */
@@ -31,23 +32,74 @@
 /*  knowledge of the CeCILL license and that you accept its terms.             */
 /*******************************************************************************/
 
-OUTPUT_FORMAT(
-	"elf32-littlearm",
-	"elf32-littlearm",
-	"elf32-littlearm"
-)
+#ifndef __INTERFACE_H__
+#define __INTERFACE_H__
 
-OUTPUT_ARCH(arm)
-
-ENTRY(_start)
-
-SECTIONS
+/*!
+ * \brief This structure defines the interface that
+ *        PIP provides to partitions.
+ */
+typedef struct interface_s
 {
-	.text :
-	{
-		. = ALIGN( 4 ) ;
-		*(.text*)
-		. = ALIGN( 4 ) ;
-		__metadataOff = . ;
-	}
-}
+	/*!
+	 * \brief The ID of the block containing the
+	 *        partition descriptor of the root
+	 *        partition.
+	 */
+	void *partDescBlockId;
+
+	/*!
+	 * \brief The limit address of the stack of
+	 *        the root partition.
+	 */
+	void *stackLimit;
+
+	/*!
+	 * \brief The stack top address of the root
+	 *        partition.
+	 */
+	void *stackTop;
+
+	/*!
+	 * \brief The VIDT start address of the root
+	 *        partition.
+	 */
+	void *vidtStart;
+
+	/*!
+	 * \brief The VIDT end address of the root
+	 *        partition.
+	 */
+	void *vidtEnd;
+
+	/*!
+	 * \brief The start address of the root
+	 *        partition binary.
+	 */
+	void *root;
+
+	/*!
+	 * \brief The start address of the unused
+	 * ROM.
+	 */
+	void *unusedRomStart;
+
+	/*!
+	 * \brief The end address of the ROM.
+	 */
+	void *romEnd;
+
+	/*!
+	 * \brief The start address of the unused
+	 * RAM.
+	 */
+	void *unusedRamStart;
+
+	/*!
+	 * \brief The end address of the RAM.
+	 */
+	void *ramEnd;
+
+} interface_t;
+
+#endif /* __INTERFACE_H__ */

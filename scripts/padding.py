@@ -6,7 +6,6 @@
 # General Public License v2.1. See the file LICENSE in the top level
 # directory for more details.
 
-# Damien Amara <damien.amara@univ-lille.fr>
 
 """Padding script"""
 
@@ -37,11 +36,10 @@ def round(x, y):
 
 
 if __name__ == '__main__':
-    try:
+    if len(sys.argv) >= 3:
         size = pathlib.Path(sys.argv[1]).stat().st_size
         padding = round(size, MPU_ALIGNMENT) - size
         with open(sys.argv[2], 'wb') as f:
             f.write(padding * PADDING_VALUE)
         sys.exit(0)
-    except IndexError:
-        usage()
+    usage()

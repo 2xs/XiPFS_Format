@@ -20,8 +20,24 @@
 
 #include <stdriot.h>
 
+typedef int (*func_ptr_t)(void);
+
+int func_a(void) {
+    //printf("func_a has been assigned to ");
+    return 23;
+}
+
+int func_b(void) {
+    //printf("func_b has been assigned to ");
+    return 32;
+}
+
+volatile func_ptr_t func_ptr_extern_1 = func_a;
+const int cst = 3;
+
 int main(int argc, char **argv)
 {
+    /*
     int i;
 
     printf("Hello World!\n");
@@ -29,6 +45,21 @@ int main(int argc, char **argv)
     for (i = 1; i < argc; i++) {
         printf("%s\n", argv[i]);
     }
+    */
 
-    return 0;
+    if (argc > 1) {
+        func_ptr_extern_1 = func_b;
+    }
+
+    int v = func_ptr_extern_1();
+    char *string = "hello world !";
+    printf("@string = %p\n", string);
+
+    printf("@&string = %p\n", &string);
+    printf("@&main = %p\n", &main);
+
+    printf("&cst = %p\n", &cst);
+    printf("cst = %d\n", cst);
+
+    return v;
 }

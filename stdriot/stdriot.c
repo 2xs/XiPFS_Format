@@ -1,296 +1,290 @@
-/*
- * Copyright (C) 2024 Université de Lille
- *
- * This file is subject to the terms and conditions of the GNU Lesser
- * General Public License v2.1. See the file LICENSE in the top level
- * directory for more details.
- */
-
-/**
- * @ingroup     examples
- * @{
- *
- * @file
- * @brief       stdriot implementation
- *
- * @author      Damien Amara <damien.amara@univ-lille.fr>
- *
- * @}
- */
+/*******************************************************************************/
+/*  © Université de Lille, The Pip Development Team (2015-2024)                */
+/*                                                                             */
+/*  This software is a computer program whose purpose is to run a minimal,     */
+/*  hypervisor relying on proven properties such as memory isolation.          */
+/*                                                                             */
+/*  This software is governed by the CeCILL license under French law and       */
+/*  abiding by the rules of distribution of free software.  You can  use,      */
+/*  modify and/ or redistribute the software under the terms of the CeCILL     */
+/*  license as circulated by CEA, CNRS and INRIA at the following URL          */
+/*  "http://www.cecill.info".                                                  */
+/*                                                                             */
+/*  As a counterpart to the access to the source code and  rights to copy,     */
+/*  modify and redistribute granted by the license, users are provided only    */
+/*  with a limited warranty  and the software's author,  the holder of the     */
+/*  economic rights,  and the successive licensors  have only  limited         */
+/*  liability.                                                                 */
+/*                                                                             */
+/*  In this respect, the user's attention is drawn to the risks associated     */
+/*  with loading,  using,  modifying and/or developing or reproducing the      */
+/*  software by the user in light of its specific status of free software,     */
+/*  that may mean  that it is complicated to manipulate,  and  that  also      */
+/*  therefore means  that it is reserved for developers  and  experienced      */
+/*  professionals having in-depth computer knowledge. Users are therefore      */
+/*  encouraged to load and test the software's suitability as regards their    */
+/*  requirements in conditions enabling the security of their systems and/or   */
+/*  data to be ensured and,  more generally, to use and operate it in the      */
+/*  same conditions as regards security.                                       */
+/*                                                                             */
+/*  The fact that you are presently reading this means that you have had       */
+/*  knowledge of the CeCILL license and that you accept its terms.             */
+/*******************************************************************************/
 
 #include <stdarg.h>
 #include <stddef.h>
 
 #include "stdriot.h"
 
-/*
- * Macro definitions
- */
-
-/**
- * @internal
- *
- * @def SHELL_DEFAULT_BUFSIZE
- *
- * @brief Default shell buffer size (maximum line length shell
- * can handle)
- *
- * @see sys/include/shell.h
- */
-#define SHELL_DEFAULT_BUFSIZE 128
-
-/**
- * @internal
- *
- * @def XIPFS_FREE_RAM_SIZE
- *
- * @brief Amount of free RAM available for the relocatable
- * binary to use
- *
- * @see sys/fs/xipfs/file.c
- */
-#define XIPFS_FREE_RAM_SIZE (512)
-
-/**
- * @internal
- *
- * @def EXEC_STACKSIZE_DEFAULT
- *
- * @brief The default execution stack size of the binary
- *
- * @see sys/fs/xipfs/file.c
- */
-#define EXEC_STACKSIZE_DEFAULT 1024
-
-/**
- * @internal
- *
- * @def EXEC_ARGC_MAX
- *
- * @brief The maximum number of arguments to pass to the binary
- *
- * @see sys/fs/xipfs/include/file.h
- */
-#define EXEC_ARGC_MAX (SHELL_DEFAULT_BUFSIZE / 2)
-
-/**
- * @internal
- *
- * @def PANIC
- *
- * @brief This macro handles fatal errors
- */
-#define PANIC() for (;;);
-
-/*
- * Internal structures
- */
-
-/**
- * @internal
- *
- * @brief Data structure that describes the memory layout
- * required by the CRT0 to execute the relocatable binary
- *
- * @see sys/fs/xipfs/file.c
- */
-typedef struct crt0_ctx_s {
-    /**
-     * Start address of the binary in the NVM
-     */
-    void *bin_base;
-    /**
-     * Start address of the available free RAM
-     */
-    void *ram_start;
-    /**
-     * End address of the available free RAM
-     */
-    void *ram_end;
-    /**
-     * Start address of the free NVM
-     */
-    void *nvm_start;
-    /**
-     * End address of the free NVM
-     */
-    void *nvm_end;
-} crt0_ctx_t;
-
-/**
- * @internal
- *
- * @warning The order of the members in the enumeration must
- * remain synchronized with the order of the members of the same
- * enumeration declared in file sys/fs/xipfs/file.c
- *
- * @brief An enumeration describing the index of the functions
- * of the libc and RIOT in the system call table
- *
- * @see sys/fs/xipfs/file.c
- */
 enum syscall_index_e {
-    /**
-     * Index of exit(3)
-     */
-    SYSCALL_EXIT,
-    /**
-     * Index of printf(3)
-     */
-    SYSCALL_PRINTF,
-    /**
-     * Maximum size of the syscall table used by the relocatable
-     * binary. It must remain the final element of the
-     * enumeration
-     */
-    SYSCALL_MAX,
+    PIP,
+    EXIT,
+    PRINTF,
+    GET_TEMP,
+    ISPRINT,
+    STRTOL,
 };
 
-/**
- * @internal
- *
- * @brief Data structure that describes the execution context of
- * a relocatable binary
- *
- * @see sys/fs/xipfs/file.c
- */
-typedef struct exec_ctx_s {
-    /**
-     * Data structure required by the CRT0 to execute the
-     * relocatable binary
-     */
-    crt0_ctx_t crt0_ctx;
-    /**
-     * Reserved memory space in RAM for the stack to be used by
-     * the relocatable binary
-     */
-    char stkbot[EXEC_STACKSIZE_DEFAULT-4];
-    /**
-     * Last word of the stack indicating the top of the stack
-     */
-    char stktop[4];
-    /**
-     * Number of arguments passed to the relocatable binary
-     */
-    int argc;
-    /**
-     * Arguments passed to the relocatable binary
-     */
-    char *argv[EXEC_ARGC_MAX];
-    /**
-     * Table of function pointers for the libc and RIOT
-     * functions used by the relocatable binary
-     */
-    void *syscall_table[SYSCALL_MAX];
-    /**
-     * Reserved memory space in RAM for the free RAM to be used
-     * by the relocatable binary
-     */
-    char ram_start[XIPFS_FREE_RAM_SIZE-1];
-    /**
-     * Last byte of the free RAM
-     */
-    char ram_end;
-} exec_ctx_t;
-
-/*
- * Internal types
- */
-
-/**
- * @internal
- *
- * @brief Pointer type for exit(3)
- */
 typedef int (*exit_t)(int status);
-
-/**
- * @internal
- *
- * @brief Pointer type for printf(3)
- */
 typedef int (*vprintf_t)(const char *format, va_list ap);
+typedef int (*get_temp_t)(void);
+typedef int (*isprint_t)(int character);
+typedef long (*strtol_t)(const char *str, char **endptr, int base);
 
-/*
- * Global variable
- */
+extern int main(int argc, char **argv);
 
-/**
- * @internal
- *
- * @brief A pointer to the system call table
- *
- * @see sys/fs/xipfs/file.c
- */
-static void **syscall_table;
+static void **syscall_prev_got = NULL;
+static void **syscall_curr_got = NULL;
+static void **syscall_table = NULL;
+static int syscall_is_init = 0;
 
-/**
- * @brief Wrapper that branches to the xipfs_exit(3) function
- *
- * @param status The exit status of the program
- *
- * @see sys/fs/xipfs/file.c
- */
-extern void exit(int status)
+static inline void
+_set_sl(volatile void *val)
 {
-    exit_t func;
-
-    /* No need to save the R10 register, which holds the address
-     * of the program's relocated GOT, since this register is
-     * callee-saved according to the ARM Architecture Procedure
-     * Call Standard, section 5.1.1 */
-    func = syscall_table[SYSCALL_EXIT];
-    (*func)(status);
+    __asm__ volatile ("mov sl, %0" : : "r" (val) :);
 }
 
-/**
- * @brief Wrapper that branches to the RIOT's printf(3) function
- *
- * @param format The formatted string to print
- */
-extern int printf(const char * format, ...)
+extern void
+syscall_init(void *prev_got, void *curr_got, void **table)
 {
-    vprintf_t func;
+    syscall_prev_got = prev_got;
+    syscall_curr_got = curr_got;
+    syscall_table = table;
+    syscall_is_init = 1;
+}
+
+extern void
+exit(int status)
+{
+    volatile void *prev_got;
+    volatile exit_t func;
+
+    if (syscall_table[PIP] == (void *)0) {
+        func = syscall_table[EXIT];
+        prev_got = syscall_prev_got;
+
+        _set_sl(prev_got);
+        (*func)(status);
+    } else {
+        __asm__ volatile
+        (
+            "mov r0, #0\n"
+            "mov r1, %0\n"
+            "push {r0, r1}\n"
+            "mov r0, #0\n"
+            "mov r1, %1\n"
+            "mov r2, #0\n"
+            "mov r3, #1\n"
+            "mov r4, #1\n"
+            "svc #12\n"
+            /* UNREACHABLE */
+            :
+            : "r" (status),
+              "r" (syscall_table[EXIT])
+            :
+        );
+    }
+}
+
+extern int
+printf(const char * format, ...)
+{
+    volatile vprintf_t func;
+    volatile void *prev_got;
+    volatile void *curr_got;
     int res = 0;
     va_list ap;
 
-    /* No need to save the R10 register, which holds the address
-     * of the program's relocated GOT, since this register is
-     * callee-saved according to the ARM Architecture Procedure
-     * Call Standard, section 5.1.1 */
-    func = syscall_table[SYSCALL_PRINTF];
-    va_start(ap, format);
-    res = (*func)(format, ap);
-    va_end(ap);
+    if (syscall_table[PIP] == (void *)0) {
+        func = syscall_table[PRINTF];
+        prev_got = syscall_prev_got;
+        curr_got = syscall_curr_got;
+
+        va_start (ap, format);
+        _set_sl(prev_got);
+        res = (*func)(format, ap);
+        _set_sl(curr_got);
+        va_end (ap);
+    } else {
+        va_start (ap, format);
+        __asm__ volatile
+        (
+            "mov r0, #1\n"
+            "mov r1, %1\n"
+            "mov r2, %2\n"
+            "push {r0, r1, r2}\n"
+            "mov r0, #0\n"
+            "mov r1, %3\n"
+            "mov r2, #0\n"
+            "mov r3, #1\n"
+            "mov r4, #1\n"
+            "svc #12\n"
+            "pop {%0}\n"
+            "add sp, sp, #8\n"
+            : "=r" (res)
+            : "r" (format),
+              "r" (ap),
+              "r" (syscall_table[PRINTF])
+            : "r0", "r1", "r2", "r3", "r4"
+        );
+        va_end (ap);
+    }
 
     return res;
 }
 
-/**
- * @internal
- *
- * @brief The function to which CRT0 branches after the
- * executable has been relocated
- */
-int start(exec_ctx_t *exec_ctx)
+extern int
+get_temp(void)
 {
-    int status, argc;
+    volatile get_temp_t func;
+    volatile void *prev_got;
+    volatile void *curr_got;
+    int res = 0;
+
+    if (syscall_table[PIP] == (void *)0) {
+        func = syscall_table[GET_TEMP];
+        prev_got = syscall_prev_got;
+        curr_got = syscall_curr_got;
+
+        _set_sl(prev_got);
+        res = (*func)();
+        _set_sl(curr_got);
+    } else {
+        __asm__ volatile
+        (
+            "mov r0, #2\n"
+            "push {r0}\n"
+            "mov r0, #0\n"
+            "mov r1, %1\n"
+            "mov r2, #0\n"
+            "mov r3, #1\n"
+            "mov r4, #1\n"
+            "svc #12\n"
+            "pop {%0}\n"
+            : "=r" (res)
+            : "r" (syscall_table[GET_TEMP])
+            : "r0", "r1", "r2", "r3", "r4"
+        );
+    }
+
+    return res;
+}
+
+extern int
+isprint(int character)
+{
+    volatile isprint_t func;
+    volatile void *prev_got;
+    volatile void *curr_got;
+    int res = 0;
+
+    if (syscall_table[PIP] == (void *)0) {
+        func = syscall_table[ISPRINT];
+        prev_got = syscall_prev_got;
+        curr_got = syscall_curr_got;
+
+        _set_sl(prev_got);
+        res = (*func)(character);
+        _set_sl(curr_got);
+    } else {
+        __asm__ volatile
+        (
+            "mov r0, #3\n"
+            "mov r1, %1\n"
+            "push {r0, r1}\n"
+            "mov r0, #0\n"
+            "mov r1, %2\n"
+            "mov r2, #0\n"
+            "mov r3, #1\n"
+            "mov r4, #1\n"
+            "svc #12\n"
+            "pop {%0}\n"
+            "add sp, sp, #4\n"
+            : "=r" (res)
+            : "r" (character),
+              "r" (syscall_table[ISPRINT])
+            : "r0", "r1", "r2", "r3", "r4"
+        );
+    }
+
+    return res;
+}
+
+extern long
+strtol(const char *str, char **endptr, int base)
+{
+    volatile strtol_t func;
+    volatile void *prev_got;
+    volatile void *curr_got;
+    int res = 0;
+
+    if (syscall_table[PIP] == (void *)0) {
+        func = syscall_table[STRTOL];
+        prev_got = syscall_prev_got;
+        curr_got = syscall_curr_got;
+
+        _set_sl(prev_got);
+        res = (*func)(str, endptr, base);
+        _set_sl(curr_got);
+    } else {
+        __asm__ volatile
+        (
+            "mov r0, #4\n"
+            "mov r1, %1\n"
+            "mov r2, %2\n"
+            "mov r3, %3\n"
+            "push {r0-r3}\n"
+            "mov r0, #0\n"
+            "mov r1, %4\n"
+            "mov r2, #0\n"
+            "mov r3, #1\n"
+            "mov r4, #1\n"
+            "svc #12\n"
+            "pop {%0}\n"
+            "add sp, sp, #12\n"
+            : "=r" (res)
+            : "r" (str),
+              "r" (endptr),
+              "r" (base),
+              "r" (syscall_table[STRTOL])
+            : "r0", "r1", "r2", "r3", "r4"
+        );
+    }
+
+    return res;
+}
+
+extern int
+start(interface_t *interface, void *gotAddr,
+    void *oldGotAddr, void **syscalls)
+{
     char **argv;
+    int argc;
 
-    /* initialize the syscall table pointer */
-    syscall_table = exec_ctx->syscall_table;
+    syscall_init(oldGotAddr, gotAddr, syscalls);
 
-    /* initialize the arguments passed to the program */
-    argc = exec_ctx->argc;
-    argv = exec_ctx->argv;
+    argc = (int)(((uint32_t *)interface->stackTop)[0]);
+    argv = (char **)&(((uint32_t *) interface->stackTop)[1]);
 
-    /* branch to the main() function of the program */
-    extern int main(int argc, char **argv);
-    status = main(argc, argv);
-
-    /* exit the program */
-    exit(status);
-
-    /* should never be reached */
-    PANIC();
+    return main(argc, argv);
 }

@@ -6,7 +6,6 @@
 # General Public License v2.1. See the file LICENSE in the top level
 # directory for more details.
 
-# Damien Amara <damien.amara@univ-lille.fr>
 
 """gdbinit script"""
 
@@ -14,16 +13,8 @@
 import sys
 
 
-from elftools.elf.elffile import ELFFile, ELFError
+from elftools.elf.elffile import ELFFile
 from elftools.elf.sections import SymbolTableSection
-
-
-SYMBOLS = [
-    ( '__rom_size'     , 'STT_NOTYPE' ),
-    ( '__got_size'     , 'STT_NOTYPE' ),
-    ( '__rom_ram_size' , 'STT_NOTYPE' ),
-    ( '__ram_size'     , 'STT_NOTYPE' ),
-]
 
 
 def usage():
@@ -38,35 +29,8 @@ def die(message):
     sys.exit(1)
 
 
-def process_symbol(sh, symbol_name, symbol_type):
+def process_file(elf, symnames):
     """Parse the symbol table sections to extract the st_value"""
-    symbols = sh.get_symbol_by_name(symbol_name)
-    if not symbols:
-        die(f'.symtab: {symbol_name}: no symbol with this name')
-    global_symbol = None
-    if len(symbols) > 1:
-        for symbol in symbols:
-            if symbol['st_info']['bind'] == 'STB_GLOBAL':
-                if global_symbol is not None:
-                    die(f'.symtab: {symbol_name}: more than one '
-                        'global symbol with this name')
-                global_symbol = symbol
-        if global_symbol is None:
-            die(f'.symtab: {symbol_name}: no global symbol '
-                'exists with this name')
-    else:
-        symbol = symbols[0]
-        if symbol['st_info']['bind'] != 'STB_GLOBAL':
-            die(f'.symtab: {symbol_name}: not a global symbol')
-        global_symbol = symbol
-    if global_symbol['st_info']['type'] != symbol_type:
-        die(f'.symtab: {symbol_name}: expected {symbol_type} '
-            'symbol type')
-    return global_symbol.entry['st_value']
-
-
-def process_symbols(elf, symbols):
-    """Process each symbol"""
     sh = elf.get_section_by_name('.symtab')
     if not sh:
         die(f'.symtab: no section with this name found')
@@ -75,18 +39,28 @@ def process_symbols(elf, symbols):
     if sh['sh_type'] != 'SHT_SYMTAB':
         die(f'.symtab: is not a SHT_SYMTAB section')
     xs = []
-    for symbol in symbols:
-        xs.append(process_symbol(sh, symbol[0], symbol[1]))
+    for symname in symnames:
+        symbols = sh.get_symbol_by_name(symname)
+        if not symbols:
+            die(f'.symtab: {symname}: no symbol with this name')
+        if len(symbols) > 1:
+            die(f'.symtab: {symname}: more than one symbol with this name')
+        xs.append(symbols[0].entry['st_value'])
     return xs
 
 
 if __name__ == '__main__':
-    try:
+    if len(sys.argv) >= 4:
         crt0_path = sys.argv[1]
         soft_path = sys.argv[2]
         crt0_meta_size = int(sys.argv[3])
         with open(soft_path, 'rb') as f:
-            xs = process_symbols(ELFFile(f), SYMBOLS)
+            xs = process_file(ELFFile(f), [
+                '__rom_size',
+                '__got_size',
+                '__rom_ram_size',
+                '__ram_size',
+            ])
         text_size = xs[0]
         got_size = xs[1]
         data_size = xs[2]
@@ -112,9 +86,4 @@ if __name__ == '__main__':
         print('set $ram_end = $ram_base + '
               f'{got_size + data_size + bss_size}')
         sys.exit(0)
-    except FileNotFoundError as e:
-        die(f'{sys.argv[1]}: no such file or directory')
-    except ELFError as e:
-        die(f'{sys.argv[1]}: {str(e)}')
-    except IndexError:
-        usage()
+    usage()

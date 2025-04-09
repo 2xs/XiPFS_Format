@@ -1,5 +1,5 @@
 /*******************************************************************************/
-/*  © Université de Lille, The Pip Development Team (2015-2024)                */
+/*  © Université de Lille, The Pip Development Team (2015-2022)                */
 /*                                                                             */
 /*  This software is a computer program whose purpose is to run a minimal,     */
 /*  hypervisor relying on proven properties such as memory isolation.          */
@@ -31,23 +31,82 @@
 /*  knowledge of the CeCILL license and that you accept its terms.             */
 /*******************************************************************************/
 
-OUTPUT_FORMAT(
-	"elf32-littlearm",
-	"elf32-littlearm",
-	"elf32-littlearm"
-)
+#ifndef __CRT0_H__
+#define __CRT0_H__
 
-OUTPUT_ARCH(arm)
+#include "interface.h"
 
-ENTRY(_start)
+typedef int (*entryPoint_t)(interface_t *interface, void *relGotSecAddr, void *oldGotAddr, void **syscalls);
 
-SECTIONS
+typedef struct symbolTable_s
 {
-	.text :
-	{
-		. = ALIGN( 4 ) ;
-		*(.text*)
-		. = ALIGN( 4 ) ;
-		__metadataOff = . ;
-	}
-}
+	/*!
+	 * \brief The entry point address within the
+	 *        partition.
+	 */
+	uint32_t entryPoint;
+	/*!
+	 * \brief The '.rom' section size, in bytes,
+	 *        of the partition.
+	 */
+	uint32_t romSecSize;
+	/*!
+	 * \brief The '.rom.ram' section size, in
+	 *        bytes, of the partition.
+	 */
+	uint32_t romRamSecSize;
+	/*!
+	 * \brief The '.ram' section size, in bytes,
+	 *        of the partition.
+	 */
+	uint32_t ramSecSize;
+	/*!
+	 * \brief The '.got' section size, in bytes,
+	 *        of the partition.
+	 */
+	uint32_t gotSecSize;
+	/*!
+	 * \brief The '.romRam' section end address
+	 *        of the partition.
+	 */
+	uint32_t romRamEnd;
+} symbolTable_t;
+
+typedef struct patchinfoEntry_s
+{
+	/*!
+	 * \brief The pointer offest to patch.
+	 */
+	uint32_t ptrOff;
+} patchinfoEntry_t;
+
+typedef struct patchinfoTable_s
+{
+	/*!
+	 * \brief The number of patchinfo entry.
+	 */
+	uint32_t entryNumber;
+	/*!
+	 * \brief The patchinfo entries.
+	 */
+	patchinfoEntry_t entries[];
+} patchinfoTable_t;
+
+typedef struct metadata_s
+{
+	/*!
+	 * \brief The symbol table.
+	 */
+	symbolTable_t symbolTable;
+	/*!
+	 * \brief The patchinfo table.
+	 */
+	patchinfoTable_t patchinfoTable;
+} metadata_t;
+
+/*!
+ * \brief the offset of the metadata structure.
+ */
+extern uint32_t *__metadataOff;
+
+#endif /* __CRT0_H__ */
