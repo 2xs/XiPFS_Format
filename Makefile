@@ -45,65 +45,31 @@ ifeq ($(shell $(PREFIX)ld --help | grep -q 'warn-rwx-segments'; echo $$?), 0)
 LDFLAGS        += -Wl,--no-warn-rwx-segments
 endif
 
-OBJCOPYFLAGS    = --input-target=elf32-littlearm
-OBJCOPYFLAGS   += --output-target=binary
 
 TARGET          = hello-world
 
-all: $(TARGET).fae gdbinit
+all: build/$(TARGET).fae
 
-$(TARGET).fae: $(TARGET)-raw.fae padding.fae
-	cat $^ > $@
+build :
+	mkdir -p build
 
-$(TARGET)-raw.fae: crt0.fae symbols.fae relocation.fae partition.fae
-	cat $^ > $@
+build/$(TARGET).fae: build/$(TARGET).elf
+	./fae_utils/build_fae.py $<
 
-crt0.fae: crt0/crt0.c crt0/link.ld crt0/Makefile
-	make -C crt0 realclean all
-	cp crt0/$@ $@
-
-symbols.fae: $(TARGET).elf scripts/symbols.py
-	exec scripts/symbols.py $< $@
-
-relocation.fae: $(TARGET).elf scripts/relocation.py
-	exec scripts/relocation.py $< $@
-
-partition.fae: $(TARGET).elf
-	$(OBJCOPY) $(OBJCOPYFLAGS) $< $@
-	@chmod 644 $@
-
-$(TARGET).elf: main.o stdriot/stdriot.o
+build/$(TARGET).elf: build/main.o build/stdriot.o
 	$(LD) $(LDFLAGS) $^ -o $@
 
-stdriot/stdriot.o: stdriot/stdriot.c
+build/stdriot.o: stdriot/stdriot.c | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
-main.o: main.c
+build/main.o: main.c | build
 	$(CC) $(CFLAGS) -c $< -o $@
-
-padding.fae: $(TARGET)-raw.fae scripts/padding.py
-	exec scripts/padding.py $< $@
-
-gdbinit: scripts/gdbinit.py crt0/crt0.elf $(TARGET).fae crt0.fae symbols.fae relocation.fae
-	exec scripts/gdbinit.py\
-            $(shell realpath crt0/crt0.elf)\
-            $(shell realpath $(TARGET).elf)\
-            $$(($$(wc -c < crt0.fae)+$$(wc -c < symbols.fae)+$$(wc -c < relocation.fae))) > $@
 
 clean:
-	$(RM)\
-            main.o\
-            stdriot/stdriot.o\
-            $(TARGET)-raw.fae\
-            padding.fae\
-            crt0.fae\
-            symbols.fae\
-            relocation.fae\
-            partition.fae
+	$(RM) build/main.o build/stdriot.o
 	make -C crt0 clean
 
 realclean: clean
-	$(RM) $(TARGET).elf $(TARGET).fae gdbinit
-	make -C crt0 realclean
+	$(RM) -rf build
 
 .PHONY: all clean realclean

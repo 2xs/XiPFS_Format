@@ -227,9 +227,7 @@ _start(interface_t *interface, void **syscalls)
 	interface->unusedRamStart =
 		(void *)(relRamSecAddr + ramSecSize);
 	/* Update of the unused ROM value. */
-	/* XXX bad unusedRomStart... */
-	interface->unusedRomStart =
-		(void *)((uintptr_t)interface->unusedRomStart + ((uint32_t)&__metadataOff) + sizeof(metadata_t) + metadata->symbolTable.romRamEnd);
+	interface->unusedRomStart = (void *)relRomRamSecAddr + romRamSecSize;
 
 	/* Relocation of the '.rom.ram' section. */
 	(void)memcpy((void *) relRomRamSecAddr,

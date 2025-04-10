@@ -51,24 +51,27 @@ CFLAGS   += -Os
 CFLAGS   += -g3
 CFLAGS   += -ggdb
 
-all: crt0.fae
+all: ../build/crt0.fae
 
-crt0.fae: crt0.elf
+../build:
+	mkdir -p ../build
+
+../build/crt0.fae: ../build/crt0.elf
 	$(OBJCOPY)\
           --input-target=elf32-littlearm\
           --output-target=binary\
         $< $@
 
-crt0.elf: crt0.o
+../build/crt0.elf: ../build/crt0.o
 	$(LD) -T link.ld $< -o $@
 
-crt0.o: crt0.c
+../build/crt0.o: crt0.c | ../build
 	$(CC) $(CFLAGS) -c $< -o $@
 
 realclean: clean
-	$(RM) -f crt0.elf crt0.bin
+	$(RM) -f ../build/crt0.fae ../build/crt0.elf
 
 clean:
-	$(RM) -f crt0.o
+	$(RM) -f ../build/crt0.o
 
 .PHONY: all realclean clean

@@ -37,15 +37,14 @@ const int cst = 3;
 
 int main(int argc, char **argv)
 {
-    /*
     int i;
-
+/*
     printf("Hello World!\n");
-
+*/
     for (i = 1; i < argc; i++) {
-        printf("%s\n", argv[i]);
+        printf("arg %d : %s\n", i, argv[i]);
     }
-    */
+
 
     if (argc > 1) {
         func_ptr_extern_1 = func_b;
