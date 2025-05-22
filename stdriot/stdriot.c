@@ -177,6 +177,9 @@ typedef struct exec_ctx_s {
      * Arguments passed to the relocatable binary
      */
     char *argv[EXEC_ARGC_MAX];
+
+    char is_safe_call;
+
     /**
      * Table of function pointers for the libc and RIOT
      * functions used by the relocatable binary
@@ -224,6 +227,8 @@ typedef int (*vprintf_t)(const char *format, va_list ap);
  */
 static void **syscall_table;
 
+static char is_safe_call;
+
 /**
  * @brief Wrapper that branches to the xipfs_exit(3) function
  *
@@ -233,14 +238,21 @@ static void **syscall_table;
  */
 extern void exit(int status)
 {
-    exit_t func;
-
+    
     /* No need to save the R10 register, which holds the address
-     * of the program's relocated GOT, since this register is
-     * callee-saved according to the ARM Architecture Procedure
-     * Call Standard, section 5.1.1 */
-    func = syscall_table[SYSCALL_EXIT];
-    (*func)(status);
+    * of the program's relocated GOT, since this register is
+    * callee-saved according to the ARM Architecture Procedure
+    * Call Standard, section 5.1.1 */
+   if (is_safe_call) {
+       asm volatile (
+           "mov r0, %0 \n"
+           "SVC 3      \n"
+           :: "r"(status)
+        );
+    } else {
+        exit_t func =  syscall_table[SYSCALL_EXIT];
+        (*func)(status);
+    }
 }
 
 /**
@@ -250,19 +262,28 @@ extern void exit(int status)
  */
 extern int printf(const char * format, ...)
 {
-    vprintf_t func;
     int res = 0;
     va_list ap;
-
+    
     /* No need to save the R10 register, which holds the address
-     * of the program's relocated GOT, since this register is
-     * callee-saved according to the ARM Architecture Procedure
-     * Call Standard, section 5.1.1 */
-    func = syscall_table[SYSCALL_PRINTF];
-    va_start(ap, format);
-    res = (*func)(format, ap);
+    * of the program's relocated GOT, since this register is
+    * callee-saved according to the ARM Architecture Procedure
+    * Call Standard, section 5.1.1 */
+   va_start(ap, format);
+   if (is_safe_call) {
+        asm volatile (
+            "mov r0, %1 \n"
+            "mov r1, %2 \n"
+            "SVC 4      \n"
+            "mov %0, r0"
+            : "=r"(res) : "r"(format), "r"(&ap)
+        );
+    }
+    else {
+        vprintf_t func = syscall_table[SYSCALL_PRINTF];
+        res = (*func)(format, ap);
+    }
     va_end(ap);
-
     return res;
 }
 
@@ -279,6 +300,9 @@ int start(exec_ctx_t *exec_ctx)
 
     /* initialize the syscall table pointer */
     syscall_table = exec_ctx->syscall_table;
+
+    /* initialize the is_safe_call boolean */
+    is_safe_call = exec_ctx->is_safe_call;
 
     /* initialize the arguments passed to the program */
     argc = exec_ctx->argc;
