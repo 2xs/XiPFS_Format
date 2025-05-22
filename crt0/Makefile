@@ -38,18 +38,23 @@ LD      := $(PREFIX)ld
 OBJCOPY := $(PREFIX)objcopy
 RM      := rm
 
-CFLAGS    = -Wall
-CFLAGS   += -Wextra
-CFLAGS   += -Werror
-CFLAGS   += -mthumb
-CFLAGS   += -mcpu=cortex-m4
-CFLAGS   += -ffreestanding
-# Prevent GCC from generating code that uses the PIC
-# register.
-CFLAGS   += -ffixed-sl
-CFLAGS   += -Os
-CFLAGS   += -g3
-CFLAGS   += -ggdb
+CFLAGS          = -Wall
+CFLAGS         += -Wextra
+CFLAGS         += -Werror
+CFLAGS         += -mthumb
+CFLAGS         += -mcpu=cortex-m4
+CFLAGS         += -ffreestanding
+ifdef DEBUG
+CFLAGS         += -Og
+CFLAGS         += -ggdb
+else
+CFLAGS         += -Os
+endif
+
+LDFLAGS         = -Tlink.ld
+
+OBJCOPYFLAGS    = --input-target=elf32-littlearm
+OBJCOPYFLAGS   += --output-target=binary
 
 all: ../build/crt0.fae
 
@@ -57,13 +62,11 @@ all: ../build/crt0.fae
 	mkdir -p ../build
 
 ../build/crt0.fae: ../build/crt0.elf
-	$(OBJCOPY)\
-          --input-target=elf32-littlearm\
-          --output-target=binary\
-        $< $@
+	$(OBJCOPY) $(OBJCOPYFLAGS) $< $@
+	@chmod 644 $@
 
-../build/crt0.elf: ../build/crt0.o
-	$(LD) -T link.ld $< -o $@
+../build/crt0.elf: ../build/crt0.o link.ld
+	$(LD) $(LDFLAGS) $< -o $@
 
 ../build/crt0.o: crt0.c | ../build
 	$(CC) $(CFLAGS) -c $< -o $@

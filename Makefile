@@ -7,7 +7,6 @@
 PREFIX          = arm-none-eabi-
 CC              = $(PREFIX)gcc
 LD              = $(PREFIX)gcc
-OBJCOPY         = $(PREFIX)objcopy
 
 CFLAGS          = -Wall
 CFLAGS         += -Wextra
@@ -21,7 +20,6 @@ CFLAGS         += -mpic-register=sl
 CFLAGS         += -mno-pic-data-is-text-relative
 CFLAGS         += -fPIC
 CFLAGS         += -ffreestanding
-CFLAGS         += -ffunction-sections
 ifdef DEBUG
 CFLAGS         += -Og
 CFLAGS         += -ggdb
@@ -37,7 +35,6 @@ LDFLAGS        += -nolibc
 LDFLAGS        += -nostdlib
 LDFLAGS        += -Tlink.ld
 LDFLAGS        += -Wl,-q
-LDFLAGS        += -Wl,-gc-sections
 # Disable the new linker warning '--warn-rwx-segments' introduced by
 # Binutils 2.39, which causes the following message: "warning:
 # $(TARGET).elf has a LOAD segment with RWX permissions".
@@ -55,11 +52,12 @@ build :
 
 build/$(TARGET).fae: build/$(TARGET).elf
 	./fae_utils/build_fae.py $<
+	@chmod 644 $@
 
 build/$(TARGET).elf: build/main.o build/stdriot.o
 	$(LD) $(LDFLAGS) $^ -o $@
 
-build/stdriot.o: stdriot/stdriot.c | build
+build/stdriot.o: stdriot/stdriot.c stdriot/stdriot.h | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
 build/main.o: main.c | build

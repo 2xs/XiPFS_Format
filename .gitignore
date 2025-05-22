@@ -3,3 +3,4 @@
 *.fae
 *.elf
 build
+__pycache__

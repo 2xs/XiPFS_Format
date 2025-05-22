@@ -1,64 +1,47 @@
-/*
- * Copyright (C) 2024 Université de Lille
- *
- * This file is subject to the terms and conditions of the GNU Lesser
- * General Public License v2.1. See the file LICENSE in the top level
- * directory for more details.
- */
+/*******************************************************************************/
+/*  © Université de Lille, The Pip Development Team (2015-2024)                */
+/*                                                                             */
+/*  This software is a computer program whose purpose is to run a minimal,     */
+/*  hypervisor relying on proven properties such as memory isolation.          */
+/*                                                                             */
+/*  This software is governed by the CeCILL license under French law and       */
+/*  abiding by the rules of distribution of free software.  You can  use,      */
+/*  modify and/ or redistribute the software under the terms of the CeCILL     */
+/*  license as circulated by CEA, CNRS and INRIA at the following URL          */
+/*  "http://www.cecill.info".                                                  */
+/*                                                                             */
+/*  As a counterpart to the access to the source code and  rights to copy,     */
+/*  modify and redistribute granted by the license, users are provided only    */
+/*  with a limited warranty  and the software's author,  the holder of the     */
+/*  economic rights,  and the successive licensors  have only  limited         */
+/*  liability.                                                                 */
+/*                                                                             */
+/*  In this respect, the user's attention is drawn to the risks associated     */
+/*  with loading,  using,  modifying and/or developing or reproducing the      */
+/*  software by the user in light of its specific status of free software,     */
+/*  that may mean  that it is complicated to manipulate,  and  that  also      */
+/*  therefore means  that it is reserved for developers  and  experienced      */
+/*  professionals having in-depth computer knowledge. Users are therefore      */
+/*  encouraged to load and test the software's suitability as regards their    */
+/*  requirements in conditions enabling the security of their systems and/or   */
+/*  data to be ensured and,  more generally, to use and operate it in the      */
+/*  same conditions as regards security.                                       */
+/*                                                                             */
+/*  The fact that you are presently reading this means that you have had       */
+/*  knowledge of the CeCILL license and that you accept its terms.             */
+/*******************************************************************************/
 
-/**
- * @ingroup     examples
- * @{
- *
- * @file
- * @brief       Example of a post-issuance software
- *
- * @author      Damien Amara <damien.amara@univ-lille.fr>
- *
- * @}
- */
-
-#include <stdriot.h>
-
-typedef int (*func_ptr_t)(void);
-
-int func_a(void) {
-    //printf("func_a has been assigned to ");
-    return 23;
-}
-
-int func_b(void) {
-    //printf("func_b has been assigned to ");
-    return 32;
-}
-
-volatile func_ptr_t func_ptr_extern_1 = func_a;
-const int cst = 3;
+#include "stdriot.h"
 
 int main(int argc, char **argv)
 {
     int i;
-/*
+
     printf("Hello World!\n");
-*/
+
     for (i = 1; i < argc; i++) {
-        printf("arg %d : %s\n", i, argv[i]);
+        printf("%s\n", argv[i]);
     }
 
-
-    if (argc > 1) {
-        func_ptr_extern_1 = func_b;
-    }
-
-    int v = func_ptr_extern_1();
-    char *string = "hello world !";
-    printf("@string = %p\n", string);
-
-    printf("@&string = %p\n", &string);
-    printf("@&main = %p\n", &main);
-
-    printf("&cst = %p\n", &cst);
-    printf("cst = %d\n", cst);
-
-    return v;
+    return 0;
 }

@@ -62,13 +62,13 @@ We have designed an *ad hoc* binary file format that keeps only the
 necessary information for relocation. This format consists of four main
 components. The first component contains the CRT0 code, responsible for
 performing relocation tasks before executing the software code. The
-second component comprises metadata, including a table of symbol values
-and relocation tables. The table of symbol values mainly stores software
-section sizes and entry point offsets. The third component consists of
-the software sections, including the `.text` section (software code),
-`.got` section (Global Offset Table), and `.data` section (initialized
-global variables). The fourth and final component is optional padding,
-ensuring the binary file is a multiple of 32 bytes.
+second component comprises part of metadata (ie relocation tables) and
+the binary total size.The third component consists of the software sections,
+including the `.text`section (software code),`.got` section (Global Offset Table),
+and `.data`section (initialized global variables). The fourth and final component is
+metadata footer included in optional padding, ensuring the binary file is
+a multiple of 32 bytes; the MPU finest grain. This metadata footer includes
+different segment sizes as well as binary entrypoint.
 
 Our *ad hoc* binary file format significantly reduces file size,
 shrinking it to approximately 20% of the equivalent ELF file size for
@@ -79,21 +79,42 @@ sections, followed by a diagram that correlates these sections with the
 software components:
 
 ```
-+-------+---------------+------------+-------+------+-------+---------+
-|       |               |            |       |      |       |         |
-| .text | symbol values | relocation | .text | .got | .data | padding |
-|       |     table     |   tables   |       |      |       |         |
-+-------+---------------+------------+-------+------+-------+---------+
+Not to scale.
 
-+-------+----------------------------+----------------------+---------+
-|       |                            |                      |         |
-| crt0  |          metadata          |    post-issuance     | padding |
-|       |                            |      software        |         |
-+-------+----------------------------+----------------------+---------+
+         4B                                                4B  4B  4B  4B  4B  4B  4B
++-------+---+------------+-------+------+-------+---------+---+---+---+---+---+---+---+
+|       |   |            |       |      |       |         |   |   |   |   |   |   |   |
+| .text |   | relocation | .text | .got | .data | padding |   |   |   |   |   |   |   |
+|       |   |   table    |       |      |       |         |   |   |   |   |   |   |   |
++-------+---+------------+-------+------+-------+---------+---+---+---+---+---+---+---+
+          ^                                                 ^   ^   ^   ^   ^   ^   ^
+          |                                                 |   |   |   |   |   |   |
+          .- Binary total size,                             |   |   |   |   |   |   .- Magic Number and Version.
+             padding included (4 Bytes).                    |   |   |   |   |   .----- CRT0 size.
+                                                            |   |   |   |   .--------- Entrypoint offset.
+                                                            |   |   |   .------------- ROM RAM size.
+                                                            |   |   .----------------- ROM size.
+                                                            |   .--------------------- GOT size.
+                                                            .------------------------- RAM size.
+
++-------+----------------+----------------------+-------------------------------------+
+|       |                |                      |         +--------------------------+|
+| crt0  |   metadata     |    post-issuance     | padding |     metadata footer      ||
+|       |                |      software        |         +--------------------------+|
++-------+----------------+----------------------+-------------------------------------+
 ```
 
 ## Debugging post-issuance software
 
+Please, read also [GettingStarted document](GETTING_STARTED.md)
+
+### Off-board.
+XiPFS' format comes with fae_utils, which include `read_fae.py`.
+This script allows to read a fae file offboard and to perform integrity checks.
+It can also be used to show different sections hexadecimal dump, or disassembled code
+according to sections.
+
+### On-board.
 Since we only keep the necessary information from the ELF file for
 relocation purposes, our binary format no longer includes debugging
 information like DWARF. However, we generate a `gdbinit` file that

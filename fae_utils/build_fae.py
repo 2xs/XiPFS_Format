@@ -15,21 +15,21 @@ from elftools.elf.sections import SymbolTableSection
 from elftools.elf.relocation import RelocationSection
 from elftools.elf.enums import ENUM_RELOC_TYPE_ARM as r_types
 
-FAE_SUFFIX      = ".fae"
-CRTO_CLI_OPTION = "--crt0_path"
-EXPORT_CRT0_TO_BYTEARRAY_DEFAULT_PATH = "./crt0/"
+from constants import FAEConstants
+
+CLI_OPTION_CRT0_PATH = "--crt0_path"
 
 def usage():
     """Print how to to use the script and exit"""
-    print(f'usage: {sys.argv[0]} [{CRTO_CLI_OPTION} crt0_path] ELFFilename')
+    print(f'usage: {sys.argv[0]} [{CLI_OPTION_CRT0_PATH} crt0_path] ELFFilename')
     print('')
     print(f'{sys.argv[0]} will build :')
-    print(f'    - a fae file from ELFFilename,')
-    print(f'    - a gdbinit file, to be used with gdb after editing.')
-    print(f'Please note that both files will be generated to the path of ELFFilename.')
+    print( '    - a fae file from ELFFilename,')
+    print(f'    - a {FAEConstants.gdbinit} file, to be used with gdb after editing.')
+    print( 'Please note that both files will be generated to the path of ELFFilename.')
     print('')
-    print(f'{CRTO_CLI_OPTION} crt0_path')
-    print(f'    This option allows to indicate a path to a custom crt0')
+    print(f'{CLI_OPTION_CRT0_PATH} crt0_path')
+    print( '    This option allows to indicate a path to a custom crt0')
     print(f'    Default is {EXPORT_CRT0_TO_BYTEARRAY_DEFAULT_PATH}')
     sys.exit(1)
 
@@ -41,32 +41,24 @@ def die(message):
 
 
 def export_crt0_to_bytearray(path_to_crt0, to_bytearray):
-    make_args = f"make -C {os.path.abspath(path_to_crt0)} realclean all"
+    make_args = f"{FAEConstants.MAKE} -C {os.path.abspath(path_to_crt0)} realclean all"
 
     result = subprocess.run(make_args, shell=True, capture_output=True, text=True)
     if result.returncode != 0:
         die(f'export_crt0_to_bytearray : failed to build crt0 : {result.stderr}')
 
-    crt0_filepath = path_to_crt0 + "/crt0.fae"
+    crt0_filepath = os.path.abspath(f'build/crt0{FAEConstants.SUFFIX}')
     with open(crt0_filepath, "rb") as crt0_file:
         to_bytearray += bytearray(crt0_file.read())
+    print(f'Export CRT0 : {len(to_bytearray)} bytes')
 
 def to_word(x):
     """Convert a python integer to a LE 4-bytes bytearray"""
-    return x.to_bytes(4, byteorder='little')
+    return x.to_bytes(4, byteorder=FAEConstants.ENDIANNESS)
 
-EXPORTED_SYMBOLS = [
-    # The order of the symbols matter, as it reflects the
-    # writing order in the symbols.bin file
-    'start',
-    '__rom_size',
-    '__rom_ram_size',
-    '__ram_size',
-    '__got_size',
-    '__rom_ram_end',
-]
 
-def export_symbols_to_bytearray(elf_file, symbols_names, to_bytearray):
+
+def export_symbols_to_dict(elf_file, symbols_names, to_dict):
     """Parse the symbol table sections to extract the st_value"""
     sh = elf_file.get_section_by_name('.symtab')
     if not sh:
@@ -81,10 +73,9 @@ def export_symbols_to_bytearray(elf_file, symbols_names, to_bytearray):
             die(f'export_symbols_to_bytearray : .symtab : {symbol_name}: no symbol with this name')
         if len(symbols) > 1:
             die(f'export_symbols_to_bytearray : .symtab : {symbol_name}: more than one symbol with this name')
-        to_bytearray += to_word(symbols[0].entry['st_value'])
+        to_dict[symbol_name] = symbols[0].entry['st_value']
+        print(f'Export symbol {symbol_name} = {to_dict[symbol_name]} bytes')
 
-
-EXPORTED_RELOCATION_TABLES = [ '.rel.rom.ram' ]
 
 def get_r_type(r_info):
     """Get the relocation type from r_info"""
@@ -94,35 +85,31 @@ def export_relocation_table(elf_file, relocation_table_name, to_bytearray):
     """Parse a relocation section to extract the r_offset"""
     sh = elf_file.get_section_by_name(relocation_table_name)
     if not sh:
-        die(f'export_relocation_table : {relocation_table_name}: is not a relocation section')
+        print(f'No relocation section named {relocation_table_name}')
+        to_bytearray += to_word(0)
+        return
     if not isinstance(sh, RelocationSection):
         die(f'export_relocation_table : {relocation_table_name}: is not a relocation section')
     if sh.is_RELA():
         die(f'export_relocation_table : {relocation_table_name} : unsupported RELA')
     to_bytearray += to_word(sh.num_relocations())
+    print(f'Export relocation table : entries count : {sh.num_relocations()}')
     for i, entry in enumerate(sh.iter_relocations()):
         if get_r_type(entry['r_info']) != r_types['R_ARM_ABS32']:
             die(f'export_relocation_table : {relocation_table_name} : entry {i}: unsupported relocation type')
-        to_bytearray += to_word(entry['r_offset'])
+        offset = entry['r_offset']
+        to_bytearray += to_word(offset)
+        print(f'\t- Exporting relocation entry {i} : offset {offset}')
 
 def export_relocation_tables(elf_file, relocation_tables_names, to_bytearray):
     for relocation_table_name in relocation_tables_names:
         export_relocation_table(elf_file, relocation_table_name, to_bytearray)
 
 
-EXPORT_PARTITION_OBJCOPY_DEFAULT_NAME = "arm-none-eabi-objcopy"
+def export_partition(elf_name, to_bytearray):
 
-EXPORT_PARTITION_OBJCOPY_FLAGS = [
-    "--input-target=elf32-littlearm", "--output-target=binary"
-]
-
-def export_partition(elf_name, objcopy_name, objcopy_flags, to_bytearray):
-    partition_name = "partition.fae"
-
-    objcopy_args = objcopy_name
-    for objcopy_flag in objcopy_flags:
-        objcopy_args += f' {objcopy_flag}'
-    objcopy_args += f' {elf_name} {partition_name}'
+    partition_name = FAEConstants.PARTITION_NAME
+    objcopy_args = f'{FAEConstants.OBJCOPY_ARGS_BASE} {elf_name} {partition_name}'
 
     result = subprocess.run(objcopy_args, shell=True, capture_output=True, text=True)
     if result.returncode != 0:
@@ -132,80 +119,108 @@ def export_partition(elf_name, objcopy_name, objcopy_flags, to_bytearray):
     with open(partition_name, "rb") as partition_file:
         to_bytearray += bytearray(partition_file.read())
 
-    rm_args = f'rm {partition_name}'
+    print(f'Export partition : {len(to_bytearray)} bytes')
+
+    rm_args = f'{FAEConstants.RM} {partition_name}'
 
     result = subprocess.run(args=rm_args, shell=True, capture_output=True, text=True)
     if result.returncode != 0:
         die(f'export_partition : failed to remove {partition_name} : {result.stderr}')
 
 
-# The default value used for padding. This value corresponds to
-# the default state of non-volatile NAND flash memories
-PADDING_VALUE = b'\xff'
-
-
-# The Pip binary size must be a multiple of this value. It
-# corresponds to the minimum alignment required by the MPU of
-# the ARMv7-M architecture
-PADDING_MPU_ALIGNMENT = 32
-
 def round(x, y):
     """Round x to the next power of two y"""
     return ((x + y - 1) & ~(y - 1))
 
-def pad_bytearray(to_bytearray):
-    size = len(to_bytearray)
-    padding = round(size, PADDING_MPU_ALIGNMENT) - size
-    for i in range(padding):
-        to_bytearray += PADDING_VALUE
+def concatenate_and_pad_bytearray(
+            crt0_bytearray,
+            exported_symbols_dictionary,
+            relocation_bytearray,
+            partition_bytearray,
+            to_bytearray):
+
+    raw_binary_size = len(crt0_bytearray)               \
+                    + FAEConstants.BINARY_SIZE_BYTESIZE \
+                    + len(relocation_bytearray)         \
+                    + len(partition_bytearray)
+
+    padding_size =                                                 \
+        round(raw_binary_size, FAEConstants.PADDING_MPU_ALIGNMENT) \
+        - raw_binary_size
+    # minimal padding size represents :
+    # CRT0 size,               =>  4 bytes.
+    # EntryPoint aka start     =>  4 bytes.
+    # __rom_ram_size           =>  4 bytes.
+    # Magic Number and Version =>  4 bytes.
+    #--------------------------------------
+    #                             16 bytes.
+    if padding_size < FAEConstants.FOOTER_BYTESIZE:
+        padding_size += FAEConstants.PADDING_MPU_ALIGNMENT
+
+    padding_size -= FAEConstants.FOOTER_BYTESIZE
+
+    # CRT0
+    to_bytearray += crt0_bytearray
+    # Binary Size
+    to_bytearray += to_word( \
+        raw_binary_size + padding_size + FAEConstants.FOOTER_BYTESIZE)
+    # Relocation Table
+    to_bytearray += relocation_bytearray
+    # Partition
+    to_bytearray += partition_bytearray
+    # Padding - minimal_padding_size
+    for i in range(padding_size):
+        to_bytearray += FAEConstants.PADDING_VALUE
+
+    # FOOTER_RAM_SIZE_OFFSET                 = -28
+    # FOOTER_BSS_SIZE_OFFSET                 = FOOTER_RAM_SIZE_OFFSET
+    to_bytearray += to_word( \
+        exported_symbols_dictionary[FAEConstants.EXPORTED_SYMBOL_RAM_SIZE])
+    # FOOTER_GOT_SIZE_OFFSET                 = -24
+    to_bytearray += to_word( \
+        exported_symbols_dictionary[FAEConstants.EXPORTED_SYMBOL_GOT_SIZE])
+    # FOOTER_ROM_SIZE_OFFSET                 = -20
+    # FOOTER_TEXT_SIZE_OFFSET                = FOOTER_ROM_SIZE_OFFSET
+    to_bytearray += to_word( \
+        exported_symbols_dictionary[FAEConstants.EXPORTED_SYMBOL_ROM_SIZE])
+    # FOOTER_ROM_RAM_SIZE_OFFSET             = -16
+    # FOOTER_DATA_SIZE_OFFSET                = FOOTER_ROM_RAM_SIZE_OFFSET
+    to_bytearray += to_word( \
+        exported_symbols_dictionary[FAEConstants.EXPORTED_SYMBOL_ROM_RAM_SIZE])
+    # FOOTER_ENTRYPOINT_OFFSET               = -12
+    to_bytearray += to_word( \
+        exported_symbols_dictionary[FAEConstants.EXPORTED_SYMBOL_START])
+    # FOOTER_CRT0_OFFSET                     = -8
+    to_bytearray += to_word(len(crt0_bytearray))
+    # FOOTER_MAGIC_NUMBER_AND_VERSION_OFFSET = -4
+    to_bytearray += to_word(FAEConstants.MAGIC_NUMBER_AND_VERSION)
 
 
-GENERATE_GDBINIT_DEFAULT_SYMBOLS_TO_FIND = [
-    '__rom_size',
-    '__got_size',
-    '__rom_ram_size',
-    '__ram_size',
-]
 
-def gdbinit_find_symbols(elf_file, symbols_to_find):
-    """Parse the symbol table sections to extract the st_value"""
-    sh = elf_file.get_section_by_name('.symtab')
-    if not sh:
-        die(f'gdbinit_find_symbols : .symtab : no section with this name found')
-    if not isinstance(sh, SymbolTableSection):
-        die(f'gdbinit_find_symbols : .symtab : is not a symbol table section')
-    if sh['sh_type'] != 'SHT_SYMTAB':
-        die(f'gdbinit_find_symbols : .symtab : is not a SHT_SYMTAB section')
-    found_symbols = []
-    for symbol_name in symbols_to_find:
-        symbols = sh.get_symbol_by_name(symbol_name)
-        if not symbols:
-            die(f'gdbinit_find_symbols : .symtab : {symbol_name}: no symbol with this name')
-        if len(symbols) > 1:
-            die(f'gdbinit_find_symbols : .symtab : {symbol_name}: more than one symbol with this name')
-        found_symbols.append(symbols[0].entry['st_value'])
-    return found_symbols
-
-def generate_gdbinit(elf_file, crt0_path, metadata_size):
-    found_symbols = gdbinit_find_symbols(elf_file, GENERATE_GDBINIT_DEFAULT_SYMBOLS_TO_FIND)
-
-    text_size = found_symbols[0]
-    got_size  = found_symbols[1]
-    data_size = found_symbols[2]
-    bss_size  = found_symbols[3]
+def generate_gdbinit(elf_file, crt0_path, metadata_size, exported_symbols_dictionary):
+    text_size = \
+        exported_symbols_dictionary[FAEConstants.EXPORTED_SYMBOL_ROM_SIZE]
+    got_size  = \
+        exported_symbols_dictionary[FAEConstants.EXPORTED_SYMBOL_GOT_SIZE]
+    data_size = \
+        exported_symbols_dictionary[FAEConstants.EXPORTED_SYMBOL_ROM_RAM_SIZE]
+    bss_size  = \
+        exported_symbols_dictionary[FAEConstants.EXPORTED_SYMBOL_RAM_SIZE]
 
     basepath           = elf_file.stream.name.split("/")[0]
     absolute_elf_path  = os.path.abspath(elf_file.stream.name)
-    absolute_crt0_path = os.path.abspath(crt0_path + "crt0.elf")
+    absolute_crt0_path = os.path.abspath(basepath + "/crt0.elf")
 
-    with open(f"{basepath}/gdbinit", "w+") as gdbinit_file:
-        gdbinit_file.write(f'set $flash_base = # Define the flash base address here\n')
-        gdbinit_file.write(f'set $ram_base = # Define the RAM base address here\n')
-        gdbinit_file.write(f'set $crt0_text = $flash_base\n')
+    gdbinit_filename = f"{basepath}/{FAEConstants.GDBINIT_FILENAME}"
+
+    with open(gdbinit_filename, "w+") as gdbinit_file:
+        gdbinit_file.write('set $flash_base = # Define the flash base address here\n')
+        gdbinit_file.write('set $ram_base = # Define the RAM base address here\n')
+        gdbinit_file.write('set $crt0_text = $flash_base\n')
         gdbinit_file.write(f'set $text = $crt0_text + {metadata_size}\n')
         gdbinit_file.write(f'set $got = $text + {text_size}\n')
         gdbinit_file.write(f'set $data = $got + {got_size}\n')
-        gdbinit_file.write(f'set $rel_got = $ram_base\n')
+        gdbinit_file.write('set $rel_got = $ram_base\n')
         gdbinit_file.write(f'set $rel_data = $rel_got + {got_size}\n')
         gdbinit_file.write(f'set $bss = $rel_data + {data_size}\n')
         gdbinit_file.write(f'add-symbol-file {absolute_crt0_path} -s .text $crt0_text\n')
@@ -218,6 +233,7 @@ def generate_gdbinit(elf_file, crt0_path, metadata_size):
                            f'{metadata_size + text_size + got_size + data_size}\n')
         gdbinit_file.write(f'set $ram_end = $ram_base + {got_size + data_size + bss_size}\n')
 
+    print(f'{os.path.abspath(gdbinit_filename)} has been generated.')
 
 if __name__ == '__main__':
     argc = len(sys.argv)
@@ -225,13 +241,11 @@ if __name__ == '__main__':
         print(f"argc {argc}")
         usage()
 
-
-
     if argc == 2:
         elf_filename = sys.argv[1].strip()
-        crt0_path = EXPORT_CRT0_TO_BYTEARRAY_DEFAULT_PATH.strip()
+        crt0_path = FAEConstants.CRT0_DEFAULT_PATH.strip()
     else :
-        if (sys.argv[1] != CRTO_CLI_OPTION):
+        if (sys.argv[1] != CLI_OPTION_CRT0_PATH):
             usage()
 
         crt0_path = sys.argv[2].strip()
@@ -242,7 +256,7 @@ if __name__ == '__main__':
         print('Bad ELFFilename : should be something along the line of name.elf')
         usage()
 
-    output_filename = elf_filename_parts[0] + FAE_SUFFIX
+    output_filename = elf_filename_parts[0] + FAEConstants.SUFFIX
 
     if crt0_path.endswith('/') == False:
         crt0_path += '/'
@@ -252,27 +266,39 @@ if __name__ == '__main__':
         elf_file = ELFFile(f)
 
         # Formerly known as crt0.fae
-        export_crt0_to_bytearray(crt0_path, array_of_bytes)
+        crt0_bytearray = bytearray()
+        export_crt0_to_bytearray(crt0_path, crt0_bytearray)
 
         # Formerly known as symbols.fae
-        export_symbols_to_bytearray(elf_file, EXPORTED_SYMBOLS, array_of_bytes)
+        exported_symbols_dictionary = dict()
+        export_symbols_to_dict(                      \
+            elf_file, FAEConstants.EXPORTED_SYMBOLS, \
+                exported_symbols_dictionary)
 
         # Formerly known as relocation.fae
-        export_relocation_tables(elf_file, EXPORTED_RELOCATION_TABLES, array_of_bytes)
+        relocation_bytearray = bytearray()
+        export_relocation_tables(                              \
+            elf_file, FAEConstants.EXPORTED_RELOCATION_TABLES, \
+            relocation_bytearray)
         metadata_size = len(array_of_bytes)
 
         # Formerly known as partition.fae
-        export_partition(
-            elf_filename,
-            EXPORT_PARTITION_OBJCOPY_DEFAULT_NAME,
-            EXPORT_PARTITION_OBJCOPY_FLAGS,
+        partition_bytearray = bytearray()
+        export_partition( elf_filename, partition_bytearray )
+
+        concatenate_and_pad_bytearray(
+            crt0_bytearray,
+            exported_symbols_dictionary,
+            relocation_bytearray,
+            partition_bytearray,
             array_of_bytes)
 
-        #Formerly known as padding.fae
-        pad_bytearray(array_of_bytes)
-
         # gdbinit
-        generate_gdbinit( elf_file, crt0_path, metadata_size )
+        generate_gdbinit(
+            elf_file,
+            crt0_path,
+            metadata_size,
+            exported_symbols_dictionary)
 
     if (len(array_of_bytes) <= 0):
         die("Nothing has been written into array_of_bytes ! Please contact authors.")
