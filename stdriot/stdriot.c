@@ -73,6 +73,8 @@
  */
 #define EXEC_ARGC_MAX (SHELL_DEFAULT_BUFSIZE / 2)
 
+#define XIPFS_SYSCALL_SVC_NUMBER 3
+
 /**
  * @internal
  *
@@ -81,6 +83,23 @@
  * @brief This macro handles fatal errors
  */
 #define PANIC() for (;;);
+
+/**
+ * @internal
+ *
+ * @def STR_HELPER
+ *
+ * @brief Used for preprocessing in asm statements
+ */
+#define STR_HELPER(x) #x
+/**
+ * @internal
+ *
+ * @def STR
+ *
+ * @brief Used for preprocessing in asm statements
+ */
+#define STR(x) STR_HELPER(x)
 
 /*
  * Internal structures
@@ -177,9 +196,10 @@ typedef struct exec_ctx_s {
      * Arguments passed to the relocatable binary
      */
     char *argv[EXEC_ARGC_MAX];
-
+    /**
+     * If the call is a safe call protected by the MPU
+     */
     char is_safe_call;
-
     /**
      * Table of function pointers for the libc and RIOT
      * functions used by the relocatable binary
@@ -238,16 +258,17 @@ static char is_safe_call;
  */
 extern void exit(int status)
 {
-    
     /* No need to save the R10 register, which holds the address
     * of the program's relocated GOT, since this register is
     * callee-saved according to the ARM Architecture Procedure
     * Call Standard, section 5.1.1 */
    if (is_safe_call) {
-       asm volatile (
-           "mov r0, %0 \n"
-           "SVC 3      \n"
-           :: "r"(status)
+        asm volatile (
+            "mov r0, %0                           \n"
+            "mov r1, %1                           \n"
+            "svc #3 \n"
+           :: "r"(SYSCALL_EXIT), "r"(status)
+           : "r0", "r1"
         );
     } else {
         exit_t func =  syscall_table[SYSCALL_EXIT];
@@ -272,11 +293,14 @@ extern int printf(const char * format, ...)
    va_start(ap, format);
    if (is_safe_call) {
         asm volatile (
-            "mov r0, %1 \n"
-            "mov r1, %2 \n"
-            "SVC 4      \n"
-            "mov %0, r0"
-            : "=r"(res) : "r"(format), "r"(&ap)
+            "mov r0, %1                   \n"
+            "mov r1, %2                   \n"
+            "mov r2, %3                   \n"
+            "svc #3                       \n"
+            "mov %0, r0                   \n"
+            : "=r"(res)
+            : "r"(SYSCALL_PRINTF), "r"(format), "r"(&ap)
+            : "r0", "r1", "r2"
         );
     }
     else {
