@@ -266,7 +266,7 @@ extern void exit(int status)
         asm volatile (
             "mov r0, %0                           \n"
             "mov r1, %1                           \n"
-            "svc #3 \n"
+            "svc #"STR(XIPFS_SYSCALL_SVC_NUMBER)" \n"
            :: "r"(SYSCALL_EXIT), "r"(status)
            : "r0", "r1"
         );
@@ -293,11 +293,11 @@ extern int printf(const char * format, ...)
    va_start(ap, format);
    if (is_safe_call) {
         asm volatile (
-            "mov r0, %1                   \n"
-            "mov r1, %2                   \n"
-            "mov r2, %3                   \n"
-            "svc #3                       \n"
-            "mov %0, r0                   \n"
+            "mov r0, %1                           \n"
+            "mov r1, %2                           \n"
+            "mov r2, %3                           \n"
+            "svc #"STR(XIPFS_SYSCALL_SVC_NUMBER)" \n"
+            "mov %0, r0                           \n"
             : "=r"(res)
             : "r"(SYSCALL_PRINTF), "r"(format), "r"(&ap)
             : "r0", "r1", "r2"
