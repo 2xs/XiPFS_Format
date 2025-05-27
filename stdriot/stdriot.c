@@ -349,8 +349,7 @@ int start(exec_ctx_t *exec_ctx)
         syscall_table = exec_ctx->syscall_table;
     }
 
-
-    // /* initialize the arguments passed to the program */
+    /* initialize the arguments passed to the program */
     argc = exec_ctx->argc;
     argv = exec_ctx->argv;
 
