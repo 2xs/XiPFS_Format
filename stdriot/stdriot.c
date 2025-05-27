@@ -42,6 +42,18 @@
 /**
  * @internal
  *
+ * @def XIPFS_EXEC_CTX_HEADER_ALIGNMENT
+ *
+ * @brief Alignment of the header members of the exec context 
+ * to configure the MPU regions properly
+ * 
+ * @see sys/fs/xipfs/file.c
+ */
+#define XIPFS_EXEC_CTX_HEADER_ALIGNMENT 512
+
+/**
+ * @internal
+ *
  * @def XIPFS_FREE_RAM_SIZE
  *
  * @brief Amount of free RAM available for the relocatable
@@ -49,7 +61,7 @@
  *
  * @see sys/fs/xipfs/file.c
  */
-#define XIPFS_FREE_RAM_SIZE (512)
+#define XIPFS_FREE_RAM_SIZE 512
 
 /**
  * @internal
@@ -178,16 +190,7 @@ typedef struct exec_ctx_s {
      * Data structure required by the CRT0 to execute the
      * relocatable binary
      */
-    crt0_ctx_t crt0_ctx;
-    /**
-     * Reserved memory space in RAM for the stack to be used by
-     * the relocatable binary
-     */
-    char stkbot[EXEC_STACKSIZE_DEFAULT-4];
-    /**
-     * Last word of the stack indicating the top of the stack
-     */
-    char stktop[4];
+    crt0_ctx_t crt0_ctx __attribute__((aligned(XIPFS_EXEC_CTX_HEADER_ALIGNMENT)));
     /**
      * Number of arguments passed to the relocatable binary
      */
@@ -199,7 +202,16 @@ typedef struct exec_ctx_s {
     /**
      * If the call is a safe call protected by the MPU
      */
-    char is_safe_call;
+    unsigned char is_safe_call;
+    /**
+     * Reserved memory space in RAM for the stack to be used by
+     * the relocatable binary
+     */
+    char stkbot[EXEC_STACKSIZE_DEFAULT-4]  __attribute__((aligned(EXEC_STACKSIZE_DEFAULT)));
+    /**
+     * Last word of the stack indicating the top of the stack
+     */
+    char stktop[4];
     /**
      * Table of function pointers for the libc and RIOT
      * functions used by the relocatable binary
@@ -209,7 +221,7 @@ typedef struct exec_ctx_s {
      * Reserved memory space in RAM for the free RAM to be used
      * by the relocatable binary
      */
-    char ram_start[XIPFS_FREE_RAM_SIZE-1];
+    char ram_start[XIPFS_FREE_RAM_SIZE-1] __attribute__((aligned(XIPFS_FREE_RAM_SIZE)));;
     /**
      * Last byte of the free RAM
      */
@@ -264,9 +276,9 @@ extern void exit(int status)
     * Call Standard, section 5.1.1 */
    if (is_safe_call) {
         asm volatile (
-            "mov r0, %0                           \n"
-            "mov r1, %1                           \n"
-            "svc #"STR(XIPFS_SYSCALL_SVC_NUMBER)" \n"
+            " mov r0, %0                           \n"
+            " mov r1, %1                           \n"
+            " svc #"STR(XIPFS_SYSCALL_SVC_NUMBER)" \n"
            :: "r"(SYSCALL_EXIT), "r"(status)
            : "r0", "r1"
         );
@@ -293,11 +305,11 @@ extern int printf(const char * format, ...)
    va_start(ap, format);
    if (is_safe_call) {
         asm volatile (
-            "mov r0, %1                           \n"
-            "mov r1, %2                           \n"
-            "mov r2, %3                           \n"
-            "svc #"STR(XIPFS_SYSCALL_SVC_NUMBER)" \n"
-            "mov %0, r0                           \n"
+            " mov r0, %1                           \n"
+            " mov r1, %2                           \n"
+            " mov r2, %3                           \n"
+            " svc #"STR(XIPFS_SYSCALL_SVC_NUMBER)" \n"
+            " mov %0, r0                           \n"
             : "=r"(res)
             : "r"(SYSCALL_PRINTF), "r"(format), "r"(&ap)
             : "r0", "r1", "r2"
@@ -322,13 +334,16 @@ int start(exec_ctx_t *exec_ctx)
     int status, argc;
     char **argv;
 
-    /* initialize the syscall table pointer */
-    syscall_table = exec_ctx->syscall_table;
-
     /* initialize the is_safe_call boolean */
     is_safe_call = exec_ctx->is_safe_call;
 
-    /* initialize the arguments passed to the program */
+    /* initialize the syscall table pointer */
+    if (!is_safe_call) {
+        syscall_table = exec_ctx->syscall_table;
+    }
+
+
+    // /* initialize the arguments passed to the program */
     argc = exec_ctx->argc;
     argv = exec_ctx->argv;
 
