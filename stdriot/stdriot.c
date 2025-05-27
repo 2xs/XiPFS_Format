@@ -259,7 +259,14 @@ typedef int (*vprintf_t)(const char *format, va_list ap);
  */
 static void **syscall_table;
 
-static char is_safe_call;
+/**
+ * @internal
+ *
+ * @brief true if the call is a safe call, false otherwise
+ *
+ * @see sys/fs/xipfs/file.c
+ */
+static unsigned char is_safe_call;
 
 /**
  * @brief Wrapper that branches to the xipfs_exit(3) function
