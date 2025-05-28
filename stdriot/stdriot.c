@@ -190,7 +190,11 @@ typedef struct exec_ctx_s {
      * Data structure required by the CRT0 to execute the
      * relocatable binary
      */
-    crt0_ctx_t crt0_ctx __attribute__((aligned(XIPFS_EXEC_CTX_HEADER_ALIGNMENT)));
+    crt0_ctx_t crt0_ctx;
+    /**
+     * If the call is a safe call protected by the MPU
+     */
+    unsigned int is_safe_call;
     /**
      * Number of arguments passed to the relocatable binary
      */
@@ -199,10 +203,6 @@ typedef struct exec_ctx_s {
      * Arguments passed to the relocatable binary
      */
     char *argv[EXEC_ARGC_MAX];
-    /**
-     * If the call is a safe call protected by the MPU
-     */
-    unsigned char is_safe_call;
     /**
      * Reserved memory space in RAM for the stack to be used by
      * the relocatable binary
@@ -343,12 +343,12 @@ int start(exec_ctx_t *exec_ctx)
 
     /* initialize the is_safe_call boolean */
     is_safe_call = exec_ctx->is_safe_call;
-
+    
     /* initialize the syscall table pointer */
     if (!is_safe_call) {
         syscall_table = exec_ctx->syscall_table;
     }
-
+    
     /* initialize the arguments passed to the program */
     argc = exec_ctx->argc;
     argv = exec_ctx->argv;
