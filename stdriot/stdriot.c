@@ -194,7 +194,7 @@ typedef struct exec_ctx_s {
     /**
      * If the call is a safe call protected by the MPU
      */
-    unsigned int is_safe_call;
+    unsigned char is_safe_call;
     /**
      * Number of arguments passed to the relocatable binary
      */
@@ -204,15 +204,6 @@ typedef struct exec_ctx_s {
      */
     char *argv[EXEC_ARGC_MAX];
     /**
-     * Reserved memory space in RAM for the stack to be used by
-     * the relocatable binary
-     */
-    char stkbot[EXEC_STACKSIZE_DEFAULT-4]  __attribute__((aligned(EXEC_STACKSIZE_DEFAULT)));
-    /**
-     * Last word of the stack indicating the top of the stack
-     */
-    char stktop[4];
-    /**
      * Table of function pointers for the libc and RIOT
      * functions used by the relocatable binary
      */
@@ -221,11 +212,20 @@ typedef struct exec_ctx_s {
      * Reserved memory space in RAM for the free RAM to be used
      * by the relocatable binary
      */
-    char ram_start[XIPFS_FREE_RAM_SIZE-1] __attribute__((aligned(XIPFS_FREE_RAM_SIZE)));;
+    char ram_start[XIPFS_FREE_RAM_SIZE-1] __attribute__((aligned(XIPFS_FREE_RAM_SIZE)));
     /**
      * Last byte of the free RAM
      */
     char ram_end;
+    /**
+     * Reserved memory space in RAM for the stack to be used by
+     * the relocatable binary
+     */
+    char stkbot[EXEC_STACKSIZE_DEFAULT-4]  __attribute__((aligned(EXEC_STACKSIZE_DEFAULT)));
+    /**
+     * Last word of the stack indicating the top of the stack
+     */
+    char stktop[4];
 } exec_ctx_t;
 
 /*
