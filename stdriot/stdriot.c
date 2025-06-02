@@ -44,9 +44,9 @@
  *
  * @def XIPFS_EXEC_CTX_HEADER_ALIGNMENT
  *
- * @brief Alignment of the header members of the exec context 
+ * @brief Alignment of the header members of the exec context
  * to configure the MPU regions properly
- * 
+ *
  * @see sys/fs/xipfs/file.c
  */
 #define XIPFS_EXEC_CTX_HEADER_ALIGNMENT 512
@@ -94,7 +94,9 @@
  *
  * @brief This macro handles fatal errors
  */
-#define PANIC() for (;;);
+#define PANIC() \
+    for (;;)    \
+        ;
 
 /**
  * @internal
@@ -125,7 +127,8 @@
  *
  * @see sys/fs/xipfs/file.c
  */
-typedef struct crt0_ctx_s {
+typedef struct crt0_ctx_s
+{
     /**
      * Start address of the binary in the NVM
      */
@@ -146,6 +149,10 @@ typedef struct crt0_ctx_s {
      * End address of the free NVM
      */
     void *nvm_end;
+    /**
+     * Start address of filp (text section first page)
+     */
+    void *filp_base;
 } crt0_ctx_t;
 
 /**
@@ -160,7 +167,8 @@ typedef struct crt0_ctx_s {
  *
  * @see sys/fs/xipfs/file.c
  */
-enum syscall_index_e {
+enum syscall_index_e
+{
     /**
      * Index of exit(3)
      */
@@ -185,7 +193,8 @@ enum syscall_index_e {
  *
  * @see sys/fs/xipfs/file.c
  */
-typedef struct exec_ctx_s {
+typedef struct exec_ctx_s
+{
     /**
      * Data structure required by the CRT0 to execute the
      * relocatable binary
@@ -212,7 +221,7 @@ typedef struct exec_ctx_s {
      * Reserved memory space in RAM for the free RAM to be used
      * by the relocatable binary
      */
-    char ram_start[XIPFS_FREE_RAM_SIZE-1] __attribute__((aligned(XIPFS_FREE_RAM_SIZE)));
+    char ram_start[XIPFS_FREE_RAM_SIZE - 1] __attribute__((aligned(XIPFS_FREE_RAM_SIZE)));
     /**
      * Last byte of the free RAM
      */
@@ -221,7 +230,7 @@ typedef struct exec_ctx_s {
      * Reserved memory space in RAM for the stack to be used by
      * the relocatable binary
      */
-    char stkbot[EXEC_STACKSIZE_DEFAULT-4]  __attribute__((aligned(EXEC_STACKSIZE_DEFAULT)));
+    char stkbot[EXEC_STACKSIZE_DEFAULT - 4] __attribute__((aligned(EXEC_STACKSIZE_DEFAULT)));
     /**
      * Last word of the stack indicating the top of the stack
      */
@@ -278,19 +287,20 @@ static unsigned char is_safe_call;
 extern void exit(int status)
 {
     /* No need to save the R10 register, which holds the address
-    * of the program's relocated GOT, since this register is
-    * callee-saved according to the ARM Architecture Procedure
-    * Call Standard, section 5.1.1 */
-   if (is_safe_call) {
-        asm volatile (
+     * of the program's relocated GOT, since this register is
+     * callee-saved according to the ARM Architecture Procedure
+     * Call Standard, section 5.1.1 */
+    if (is_safe_call)
+    {
+        asm volatile(
             " mov r0, %0                           \n"
             " mov r1, %1                           \n"
-            " svc #"STR(XIPFS_SYSCALL_SVC_NUMBER)" \n"
-           :: "r"(SYSCALL_EXIT), "r"(status)
-           : "r0", "r1"
-        );
-    } else {
-        exit_t func =  syscall_table[SYSCALL_EXIT];
+            " svc #" STR(XIPFS_SYSCALL_SVC_NUMBER) " \n" ::"r"(SYSCALL_EXIT),
+            "r"(status));
+    }
+    else
+    {
+        exit_t func = syscall_table[SYSCALL_EXIT];
         (*func)(status);
     }
 }
@@ -300,29 +310,30 @@ extern void exit(int status)
  *
  * @param format The formatted string to print
  */
-extern int printf(const char * format, ...)
+extern int printf(const char *format, ...)
 {
     int res = 0;
     va_list ap;
-    
+
     /* No need to save the R10 register, which holds the address
-    * of the program's relocated GOT, since this register is
-    * callee-saved according to the ARM Architecture Procedure
-    * Call Standard, section 5.1.1 */
-   va_start(ap, format);
-   if (is_safe_call) {
-        asm volatile (
+     * of the program's relocated GOT, since this register is
+     * callee-saved according to the ARM Architecture Procedure
+     * Call Standard, section 5.1.1 */
+    va_start(ap, format);
+    if (is_safe_call)
+    {
+        asm volatile(
             " mov r0, %1                           \n"
             " mov r1, %2                           \n"
             " mov r2, %3                           \n"
-            " svc #"STR(XIPFS_SYSCALL_SVC_NUMBER)" \n"
-            " mov %0, r0                           \n"
+            " svc #" STR(XIPFS_SYSCALL_SVC_NUMBER) " \n"
+                                                   " mov %0, r0                           \n"
             : "=r"(res)
             : "r"(SYSCALL_PRINTF), "r"(format), "r"(&ap)
-            : "r0", "r1", "r2"
-        );
+            : "r0", "r1", "r2");
     }
-    else {
+    else
+    {
         vprintf_t func = syscall_table[SYSCALL_PRINTF];
         res = (*func)(format, ap);
     }
@@ -343,12 +354,13 @@ int start(exec_ctx_t *exec_ctx)
 
     /* initialize the is_safe_call boolean */
     is_safe_call = exec_ctx->is_safe_call;
-    
+
     /* initialize the syscall table pointer */
-    if (!is_safe_call) {
+    if (!is_safe_call)
+    {
         syscall_table = exec_ctx->syscall_table;
     }
-    
+
     /* initialize the arguments passed to the program */
     argc = exec_ctx->argc;
     argv = exec_ctx->argv;

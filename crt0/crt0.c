@@ -202,21 +202,24 @@
  * @brief Value indicating to the host that we are requesting a
  * semihosting operation.
  */
-#define ANGEL_SWI  "0xab"
+#define ANGEL_SWI "0xab"
 
 /**
  * @def PANIC
  *
  * @brief This macro handles fatal errors
  */
-#define PANIC() for (;;);
+#define PANIC() \
+    for (;;)    \
+        ;
 
 /**
  * @internal
  *
  * @brief Enumeration of error message identifiers
  */
-typedef enum err_msg_id_u {
+typedef enum err_msg_id_u
+{
     /**
      * Identifier of error message 1
      */
@@ -321,7 +324,8 @@ typedef struct metadata_s
  * @brief Data structure that describes the memory layout
  * required by the CRT0 to execute the relocatable binary
  */
-typedef struct crt0_ctx_s {
+typedef struct crt0_ctx_s
+{
     /**
      * Start address of the binary in the NVM
      */
@@ -342,6 +346,10 @@ typedef struct crt0_ctx_s {
      * End address of the free NVM
      */
     void *nvm_end;
+    /**
+     * Start address of filp (text section first page)
+     */
+    void *filp_base;
 } crt0_ctx_t;
 
 /**
@@ -355,7 +363,7 @@ extern uint32_t *__metadata_off;
  * Fonction prototypes
  */
 
-static inline void* memcpy(void *dest, const void *src, size_t n);
+static inline void *memcpy(void *dest, const void *src, size_t n);
 static NAKED void die(err_msg_id_t id UNUSED);
 
 /**
@@ -375,7 +383,8 @@ static NAKED void die(err_msg_id_t id UNUSED);
  * @param ctx A pointer to a memory region containg a CRT0 data
  * structure
  */
-SECTION("._start") NORETURN void _start(crt0_ctx_t *ctx)
+SECTION("._start")
+NORETURN void _start(crt0_ctx_t *ctx)
 {
     /* get memory layout */
     uint32_t binary_addr = (uint32_t)ctx->bin_base;
@@ -383,8 +392,7 @@ SECTION("._start") NORETURN void _start(crt0_ctx_t *ctx)
     uint32_t ram_end_addr = (uint32_t)ctx->ram_end;
 
     /* get metadata */
-    metadata_t *metadata = (metadata_t *)
-        (binary_addr + (uint32_t) &__metadata_off);
+    metadata_t *metadata = (metadata_t *)(binary_addr + (uint32_t)&__metadata_off);
     uint32_t entry_point_offset = metadata->symbol_table.entry_point;
     uint32_t rom_sec_size = metadata->symbol_table.rom_sec_size;
     uint32_t got_sec_size = metadata->symbol_table.got_sec_size;
@@ -393,10 +401,10 @@ SECTION("._start") NORETURN void _start(crt0_ctx_t *ctx)
 
     /* calculate section start address in ROM */
     uint32_t rom_sec_addr =
-        (uint32_t) metadata + sizeof(metadata->symbol_table) +
+        (uint32_t)metadata + sizeof(metadata->symbol_table) +
         sizeof(metadata->patchinfo_table.entry_number) +
         metadata->patchinfo_table.entry_number *
-        sizeof(patchinfo_entry_t);
+            sizeof(patchinfo_entry_t);
     uint32_t got_sec_addr = rom_sec_addr + rom_sec_size;
     uint32_t rom_ram_sec_addr = got_sec_addr + got_sec_size;
     uint32_t entry_point_addr = THUMB_ADDRESS(rom_sec_addr + entry_point_offset);
@@ -409,7 +417,8 @@ SECTION("._start") NORETURN void _start(crt0_ctx_t *ctx)
     /* check if sufficient RAM is available for relocation */
     if (rel_got_sec_addr + got_sec_size > ram_end_addr ||
         rel_rom_ram_sec_addr + rom_ram_sec_size > ram_end_addr ||
-        rel_ram_sec_addr + ram_sec_size > ram_end_addr) {
+        rel_ram_sec_addr + ram_sec_size > ram_end_addr)
+    {
         die(ERR_MSG_ID_1);
     }
 
@@ -418,53 +427,60 @@ SECTION("._start") NORETURN void _start(crt0_ctx_t *ctx)
     /* Update unused ROM value */
     ctx->nvm_start = (void *)ROUND(
         (uintptr_t)ctx->nvm_start +
-        ((uint32_t)&__metadata_off) +
-        sizeof(metadata_t) +
-        metadata->symbol_table.rom_ram_end, 32);
+            ((uint32_t)&__metadata_off) +
+            sizeof(metadata_t) +
+            metadata->symbol_table.rom_ram_end,
+        32);
 
     /* relocate .rom.ram section */
-    (void)memcpy((void *) rel_rom_ram_sec_addr,
-                 (void *) rom_ram_sec_addr,
-                 (size_t) rom_ram_sec_size);
+    (void)memcpy((void *)rel_rom_ram_sec_addr,
+                 (void *)rom_ram_sec_addr,
+                 (size_t)rom_ram_sec_size);
 
     /* initialize .ram section */
-    for (size_t i = 0; (i << 2) < ram_sec_size; i++) {
-        ((uint32_t *) rel_ram_sec_addr)[i] = 0;
+    for (size_t i = 0; (i << 2) < ram_sec_size; i++)
+    {
+        ((uint32_t *)rel_ram_sec_addr)[i] = 0;
     }
 
-    /* 
+    /*
      * Relocate the '.got' section from ROM to RAM,
      * dynamically updating each global variable offset
      * - originally relative to the binary file's start - to
      * the new memory addresses where they are now located
      */
-    for (size_t i = 0; (i << 2) < got_sec_size; i++) {
-        uint32_t off = ((uint32_t *) got_sec_addr)[i];
+    for (size_t i = 0; (i << 2) < got_sec_size; i++)
+    {
+        uint32_t off = ((uint32_t *)got_sec_addr)[i];
         uint32_t addr = 0;
-        if (off < rom_sec_size) {
+        if (off < rom_sec_size)
+        {
             addr = rom_sec_addr + off;
             goto valid_got_entry;
         }
         off -= rom_sec_size;
-        if (off < got_sec_size) {
+        if (off < got_sec_size)
+        {
             /* offset must always be zero for the
              * _rom_size symbol */
             addr = rel_got_sec_addr + off;
             goto valid_got_entry;
         }
         off -= got_sec_size;
-        if (off < rom_ram_sec_size) {
+        if (off < rom_ram_sec_size)
+        {
             addr = rel_rom_ram_sec_addr + off;
             goto valid_got_entry;
         }
         off -= rom_ram_sec_size;
-        if (off < ram_sec_size) {
+        if (off < ram_sec_size)
+        {
             addr = rel_ram_sec_addr + off;
             goto valid_got_entry;
         }
         die(ERR_MSG_ID_2);
-valid_got_entry:
-        ((uint32_t *) rel_got_sec_addr)[i] = addr;
+    valid_got_entry:
+        ((uint32_t *)rel_got_sec_addr)[i] = addr;
     }
 
     /*
@@ -472,55 +488,64 @@ valid_got_entry:
      * address of the value it points to the corresponding
      * relocated pointer address
      */
-    for (size_t i = 0; i < metadata->patchinfo_table.entry_number; i++) {
+    for (size_t i = 0; i < metadata->patchinfo_table.entry_number; i++)
+    {
         uint32_t ptr_off = metadata->patchinfo_table.entries[i].ptr_off;
         uint32_t off = *((uint32_t *)(rom_sec_addr + ptr_off));
         uint32_t ptr_addr = 0, addr = 0;
-        if (ptr_off < rom_sec_size) {
+        if (ptr_off < rom_sec_size)
+        {
             goto ptr_off_in_rom;
         }
         ptr_off -= rom_sec_size;
-        if (ptr_off < got_sec_size) {
+        if (ptr_off < got_sec_size)
+        {
             goto off_in_got;
         }
         ptr_off -= got_sec_size;
-        if (ptr_off < rom_ram_sec_size) {
+        if (ptr_off < rom_ram_sec_size)
+        {
             ptr_addr = rel_rom_ram_sec_addr + ptr_off;
             goto valid_ptr_addr;
         }
         ptr_off -= rom_ram_sec_size;
-        if (ptr_off < ram_sec_size) {
+        if (ptr_off < ram_sec_size)
+        {
             ptr_addr = rel_ram_sec_addr + ptr_off;
             goto valid_ptr_addr;
         }
         goto off_out_bounds;
-valid_ptr_addr:
-        if (off < rom_sec_size) {
+    valid_ptr_addr:
+        if (off < rom_sec_size)
+        {
             addr = rom_sec_addr + off;
             goto valid_addr;
         }
         off -= rom_sec_size;
-        if (off < got_sec_size) {
+        if (off < got_sec_size)
+        {
             goto off_in_got;
         }
         off -= got_sec_size;
-        if (off < rom_ram_sec_size) {
+        if (off < rom_ram_sec_size)
+        {
             addr = rel_rom_ram_sec_addr + off;
             goto valid_addr;
         }
         off -= rom_ram_sec_size;
-        if (off < ram_sec_size) {
+        if (off < ram_sec_size)
+        {
             addr = rel_ram_sec_addr + off;
             goto valid_addr;
         }
-off_out_bounds:
+    off_out_bounds:
         die(ERR_MSG_ID_2);
-ptr_off_in_rom:
+    ptr_off_in_rom:
         die(ERR_MSG_ID_3);
-off_in_got:
+    off_in_got:
         die(ERR_MSG_ID_4);
-valid_addr:
-        *((uint32_t *) ptr_addr) = addr;
+    valid_addr:
+        *((uint32_t *)ptr_addr) = addr;
     }
 
     /*
@@ -529,17 +554,15 @@ valid_addr:
      * the relocated GOT, and branch to the address of the
      * start() function
      */
-    __asm__ volatile
-    (
+    __asm__ volatile(
         "   mov    r0, %0 \n"
         "   mov    sl, %1 \n"
         "   bx     %2     \n"
         :
-        : "r" (ctx),
-          "r" (rel_got_sec_addr),
-          "r" (entry_point_addr)
-        : "r0", "r1", "sl"
-    );
+        : "r"(ctx),
+          "r"(rel_got_sec_addr),
+          "r"(entry_point_addr)
+        : "r0", "r1", "sl");
 
     PANIC();
 }
@@ -558,58 +581,54 @@ valid_addr:
  * @see Cortex-M4 Technical Reference Manual 3.3.1 Cortex-M4
  * instructions
  */
-static inline void* memcpy(void *dest,
+static inline void *memcpy(void *dest,
                            const void *src,
                            size_t n)
 {
     const char *src0 = src;
     char *dest0 = dest;
 
-    while (n >= LDM_STM_NB_BYTES_COPIED) {
-        __asm__ volatile
-        (
+    while (n >= LDM_STM_NB_BYTES_COPIED)
+    {
+        __asm__ volatile(
             "ldmia %0!, {r2-r12,r14}\n"
             "stmia %1!, {r2-r12,r14}\n"
-            : "+r" (src0), "+r" (dest0)
+            : "+r"(src0), "+r"(dest0)
             :
-            :  "r2",  "r3",  "r4",  "r5",
-               "r6",  "r7",  "r8",  "r9",
+            : "r2", "r3", "r4", "r5",
+              "r6", "r7", "r8", "r9",
               "r10", "r11", "r12", "r14",
-              "memory"
-        );
+              "memory");
         n -= LDM_STM_NB_BYTES_COPIED;
     }
-    while (n >= LDRD_STRD_NB_BYTES_COPIED) {
-        __asm__ volatile
-        (
+    while (n >= LDRD_STRD_NB_BYTES_COPIED)
+    {
+        __asm__ volatile(
             "ldrd r2, r3, [%0], #8\n"
             "strd r2, r3, [%1], #8\n"
-            : "+r" (src0), "+r" (dest0)
+            : "+r"(src0), "+r"(dest0)
             :
-            : "r2", "r3", "memory"
-        );
+            : "r2", "r3", "memory");
         n -= LDRD_STRD_NB_BYTES_COPIED;
     }
-    if (n >= LDR_STR_NB_BYTES_COPIED) {
-        __asm__ volatile
-        (
+    if (n >= LDR_STR_NB_BYTES_COPIED)
+    {
+        __asm__ volatile(
             "ldr r2, [%0], #4\n"
             "str r2, [%1], #4\n"
-            : "+r" (src0), "+r" (dest0)
+            : "+r"(src0), "+r"(dest0)
             :
-            : "r2", "memory"
-        );
+            : "r2", "memory");
         n -= LDR_STR_NB_BYTES_COPIED;
     }
-    while (n >= LDRB_STRB_NB_BYTES_COPIED) {
-        __asm__ volatile
-        (
+    while (n >= LDRB_STRB_NB_BYTES_COPIED)
+    {
+        __asm__ volatile(
             "ldrb r2, [%0], #1\n"
             "strb r2, [%1], #1\n"
-            : "+r" (src0), "+r" (dest0)
+            : "+r"(src0), "+r"(dest0)
             :
-            : "r2", "memory"
-        );
+            : "r2", "memory");
         n -= LDRB_STRB_NB_BYTES_COPIED;
     }
 
@@ -623,8 +642,7 @@ static inline void* memcpy(void *dest,
  */
 static NAKED void die(err_msg_id_t id UNUSED)
 {
-    __asm__ volatile
-    (
+    __asm__ volatile(
         "   mov    r2, r0                 \n"
         "   mov    r0, #" SYS_WRITE0 "    \n"
         "   adr.w  r1, 3f                 \n"
@@ -648,6 +666,5 @@ static NAKED void die(err_msg_id_t id UNUSED)
         "5: .asciz \"" ERR_MSG_2 "\\n\"   \n"
         "6: .asciz \"" ERR_MSG_3 "\\n\"   \n"
         "7: .asciz \"" ERR_MSG_4 "\\n\"   \n"
-        "   .align 1                      \n"
-    );
+        "   .align 1                      \n");
 }
