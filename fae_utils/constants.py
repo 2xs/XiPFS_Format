@@ -15,7 +15,7 @@ class FAEConstants:
 
 
     MAGIC_NUMBER             = int(0xFACADE00)
-    VERSION                  = int(0x10)
+    VERSION                  = int(0x11)
     MAGIC_NUMBER_AND_VERSION = MAGIC_NUMBER | VERSION
 
     CRT0_DEFAULT_PATH = "./crt0/"

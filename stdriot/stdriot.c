@@ -98,33 +98,6 @@ typedef int (*xipfs_syscall_exit_t)(int status);
 /**
  * @internal
  *
- * @def XIPFS_FREE_RAM_SIZE
- *
- * @brief Amount of free RAM available for the relocatable
- * binary to use
- *
- * @warning Must be synchronized with xipfs' one
- *
- * @see xipfs/src/file.c
- */
-#define XIPFS_FREE_RAM_SIZE 4096
-
-/**
- * @internal
- *
- * @def EXEC_STACKSIZE_DEFAULT
- *
- * @brief The default execution stack size of the binary
- *
- * @warning Must be synchronized with xipfs' one
- *
- * @see xipfs/src/file.c
- */
-#define EXEC_STACKSIZE_DEFAULT 1024
-
-/**
- * @internal
- *
  * @def XIPFS_EXEC_ARGC_MAX
  *
  * @brief The maximum number of arguments to pass to the binary
@@ -186,6 +159,8 @@ typedef int (*xipfs_syscall_exit_t)(int status);
  * required by the CRT0 to execute the relocatable binary
  *
  * @see sys/fs/xipfs/file.c
+ * @warning MUST REMAIN SYNCHRONIZED with xipfs's file.c.
+ * @warning MUST REMAIN SYNCHRONIZED with crt0's definition.
  */
 typedef struct crt0_ctx_s {
     /**
@@ -213,24 +188,8 @@ typedef struct crt0_ctx_s {
      * which is the text segment of the xipfs file.
      */
     void *file_base;
-} crt0_ctx_t;
-
-/**
- * @internal
- *
- * @brief Data structure that describes the execution context of
- * a relocatable binary
- *
- * @warning MUST REMAIN SYNCHRONIZED with xipfs's file.c.
- */
-typedef struct exec_ctx_s {
     /**
-     * Data structure required by the CRT0 to execute the
-     * relocatable binary
-     */
-    crt0_ctx_t crt0_ctx;
-    /**
-     * true if the context is executed in user mode with MPU regions configured,
+     * true if the context is executed in user mode with configured MPU regions,
      * false otherwise
      */
     unsigned char is_safe_call;
@@ -255,24 +214,10 @@ typedef struct exec_ctx_s {
      */
     const void **user_syscall_table;
     /**
-     * Reserved memory space in RAM for the free RAM to be used
-     * by the relocatable binary
+     * When using xipfs_file_safe_exec, syscalls results will be written here.
      */
-    char ram_start[XIPFS_FREE_RAM_SIZE-1] __attribute__((aligned(XIPFS_FREE_RAM_SIZE)));
-    /**
-     * Last byte of the free RAM
-     */
-    char ram_end;
-    /**
-     * Reserved memory space in RAM for the stack to be used by
-     * the relocatable binary
-     */
-    char stkbot[EXEC_STACKSIZE_DEFAULT-4] __attribute__((aligned(EXEC_STACKSIZE_DEFAULT)));
-    /**
-     * Last word of the stack indicating the top of the stack
-     */
-    char stktop[4];
-} exec_ctx_t;
+    int syscall_result;
+} crt0_ctx_t;
 
 /*
  * Internal types
@@ -307,6 +252,8 @@ static const void **xipfs_syscall_table;
  * @see xipfs/src/file.c
  */
 static const void **user_syscall_table;
+
+static int *syscall_result_ptr;
 
 /**
  * @brief Wrapper that branches to the xipfs_exit(3) function
@@ -355,15 +302,15 @@ extern int printf(const char * format, ...)
 
     if (is_safe_call){
         asm volatile(
-            "mov r0, %1                            \n"
-            "mov r1, %2                            \n"
-            "mov r2, %3                            \n"
+            "mov r0, %0                            \n"
+            "mov r1, %1                            \n"
+            "mov r2, %2                            \n"
             "svc #" STR(XIPFS_SYSCALL_SVC_NUMBER) "\n"
-            "mov %0, r0                            \n"
-            :"=r"(res)
+            :
             :"r"(XIPFS_USER_SYSCALL_PRINTF), "r"(format), "r"(&ap)
             : "r0", "r1", "r2"
         );
+        res = *syscall_result_ptr;
     } else {
         xipfs_user_syscall_vprintf_t func;
 
@@ -381,13 +328,13 @@ extern int get_temp(void) {
 
     if (is_safe_call) {
         asm volatile (
-            "mov r0,%1                             \n"
+            "mov r0, %0                            \n"
             "svc #" STR(XIPFS_SYSCALL_SVC_NUMBER) "\n"
-            "mov %0, r0                            \n"
-            : "=r"(res)
+            :
             : "r"(XIPFS_USER_SYSCALL_GET_TEMP)
-            : "r0", "r1"
+            : "r0"
         );
+        res = *syscall_result_ptr;
     } else {
         xipfs_user_syscall_get_temp_t func;
 
@@ -402,14 +349,14 @@ extern int isprint(int character) {
 
     if (is_safe_call) {
         asm volatile(
-            "mov r0, %1                            \n"
-            "mov r1, %2                            \n"
+            "mov r0, %0                            \n"
+            "mov r1, %1                            \n"
             "svc #" STR(XIPFS_SYSCALL_SVC_NUMBER) "\n"
-            "mov %0, r0"
-            : "=r"(res)
+            :
             : "r"(XIPFS_USER_SYSCALL_ISPRINT), "r"(character)
             : "r0", "r1"
         );
+        res = *syscall_result_ptr;
     } else {
         xipfs_user_syscall_isprint_t func;
 
@@ -426,16 +373,17 @@ extern long strtol(const char *str, char **endptr, int base) {
 
     if (is_safe_call) {
         asm volatile (
-            "mov r0, %1                            \n"
-            "mov r1, %2                            \n"
-            "mov r2, %3                            \n"
-            "mov r3, %4                            \n"
+            "mov r0, %0                            \n"
+            "mov r1, %1                            \n"
+            "mov r2, %2                            \n"
+            "mov r3, %3                            \n"
             "svc #" STR(XIPFS_SYSCALL_SVC_NUMBER) "\n"
-            "mov %0, r0                            \n"
-            : "=r"(res)
+            :
             : "r"(XIPFS_USER_SYSCALL_STRTOL), "r"(str), "r"(endptr), "r"(base)
             : "r0", "r1", "r2", "r3"
         );
+
+        res = *syscall_result_ptr;
     } else {
         xipfs_user_syscall_strtol_t func;
 
@@ -452,14 +400,14 @@ extern int get_led(int pos) {
 
     if (is_safe_call) {
         asm volatile(
-            "mov r0, %1                            \n"
-            "mov r1, %2                            \n"
+            "mov r0, %0                            \n"
+            "mov r1, %1                            \n"
             "svc #" STR(XIPFS_SYSCALL_SVC_NUMBER) "\n"
-            "mov %0, r0                            \n"
-            : "=r"(res)
+            :
             : "r"(XIPFS_USER_SYSCALL_GET_LED), "r"(pos)
             : "r0", "r1"
         );
+        res = *syscall_result_ptr;
     } else {
         xipfs_user_syscall_get_led_t func;
 
@@ -474,15 +422,15 @@ extern int set_led(int pos, int val) {
 
     if (is_safe_call) {
         asm volatile (
-            "mov r0, %1                            \n"
-            "mov r1, %2                            \n"
-            "mov r2, %3                            \n"
+            "mov r0, %0                            \n"
+            "mov r1, %1                            \n"
+            "mov r2, %2                            \n"
             "svc #" STR(XIPFS_SYSCALL_SVC_NUMBER) "\n"
-            "mov %0, r0                            \n"
-            : "=r"(res)
+            :
             : "r"(XIPFS_USER_SYSCALL_SET_LED), "r"(pos), "r"(val)
             : "r0", "r1", "r2"
         );
+        res = *syscall_result_ptr;
     } else {
         xipfs_user_syscall_set_led_t func;
 
@@ -498,16 +446,16 @@ extern ssize_t copy_file(const char *name, void *buf, size_t nbyte) {
 
     if (is_safe_call) {
         asm volatile(
-            "mov r0, %1                            \n"
-            "mov r1, %2                            \n"
-            "mov r2, %3                            \n"
-            "mov r3, %4                            \n"
+            "mov r0, %0                            \n"
+            "mov r1, %1                            \n"
+            "mov r2, %2                            \n"
+            "mov r3, %3                            \n"
             "svc #" STR(XIPFS_SYSCALL_SVC_NUMBER) "\n"
-            "mov %0, r0                            \n"
-            : "=r"(res)
+            :
             : "r"(XIPFS_USER_SYSCALL_COPY_FILE), "r"(name), "r"(buf), "r"(nbyte)
             : "r0", "r1", "r2", "r3"
         );
+        res = *syscall_result_ptr;
     } else {
         xipfs_user_syscall_copy_file_t func;
 
@@ -523,15 +471,15 @@ extern int get_file_size(const char *name, size_t *size) {
 
     if (is_safe_call) {
         asm volatile(
-            "mov r0, %1                            \n"
-            "mov r1, %2                            \n"
-            "mov r2, %3                            \n"
+            "mov r0, %0                            \n"
+            "mov r1, %1                            \n"
+            "mov r2, %2                            \n"
             "svc #" STR(XIPFS_SYSCALL_SVC_NUMBER) "\n"
-            "mov %0, r0                            \n"
-            : "=r"(res)
+            :
             : "r"(XIPFS_USER_SYSCALL_GET_FILE_SIZE), "r"(name), "r"(size)
             : "r0", "r1", "r2"
         );
+        res = *syscall_result_ptr;
     } else {
         xipfs_user_syscall_get_file_size_t func;
 
@@ -547,16 +495,16 @@ extern void *memset(void *m, int c, size_t n) {
     void *res;
     if (is_safe_call) {
         asm volatile(
-            "mov r0, %1                            \n"
-            "mov r1, %2                            \n"
-            "mov r2, %3                            \n"
-            "mov r3, %4                            \n"
+            "mov r0, %0                            \n"
+            "mov r1, %1                            \n"
+            "mov r2, %2                            \n"
+            "mov r3, %3                            \n"
             "svc #" STR(XIPFS_SYSCALL_SVC_NUMBER) "\n"
-            "mov %0, r0                            \n"
-            : "=r"(res)
+            :
             : "r"(XIPFS_USER_SYSCALL_MEMSET), "r"(m), "r"(c), "r"(n)
             : "r0", "r1", "r2", "r3"
         );
+        res = (void *)(uintptr_t)(*syscall_result_ptr);
     } else {
         func = user_syscall_table[XIPFS_USER_SYSCALL_MEMSET];
         res  = (*func)(m, c, n);
@@ -570,28 +518,30 @@ extern void *memset(void *m, int c, size_t n) {
  * @brief The function to which CRT0 branches after the
  * executable has been relocated
  */
-int start(exec_ctx_t *exec_ctx)
+int start(crt0_ctx_t *crt0_ctx)
 {
     int status, argc;
     char **argv;
 
     /* Are we executing a safe exec call ? */
-    is_safe_call = exec_ctx->is_safe_call;
+    is_safe_call = crt0_ctx->is_safe_call;
 
     /* initialize syscall tables pointers */
     if (is_safe_call) {
         /* We'll be relying onto SVC to perform the required functions */
         xipfs_syscall_table = NULL;
         user_syscall_table  = NULL;
+        syscall_result_ptr  = &(crt0_ctx->syscall_result);
     } else {
         /* We'll be relying onto syscall tables to perform the required functions */
-        xipfs_syscall_table = exec_ctx->xipfs_syscall_table;
-        user_syscall_table  = exec_ctx->user_syscall_table;
+        xipfs_syscall_table = crt0_ctx->xipfs_syscall_table;
+        user_syscall_table  = crt0_ctx->user_syscall_table;
+        syscall_result_ptr  = NULL;
     }
 
     /* initialize the arguments passed to the program */
-    argc = exec_ctx->argc;
-    argv = exec_ctx->argv;
+    argc = crt0_ctx->argc;
+    argv = crt0_ctx->argv;
 
     /* branch to the main() function of the program */
     extern int main(int argc, char **argv);
