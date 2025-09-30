@@ -251,8 +251,6 @@ typedef enum err_msg_id_u {
     ERR_MSG_ID_4,
 } err_msg_id_t;
 
-#define BINARY_MAGIC_NUMBER_AND_VERSION ((uint32_t)0xFACADE10)
-
 typedef enum binary_footer_offsets_e {
     BINARY_FOOTER_RAM_SIZE_OFFSET                 = -28,
     BINARY_FOOTER_BSS_SIZE_OFFSET                 = BINARY_FOOTER_RAM_SIZE_OFFSET,
@@ -356,7 +354,7 @@ SECTION("._start") NORETURN void _start(crt0_ctx_t *ctx)
     uint32_t *value_ptr = (uint32_t *)(
         end_of_binary + BINARY_FOOTER_MAGIC_NUMBER_AND_VERSION_OFFSET
     );
-    if ( *value_ptr != BINARY_MAGIC_NUMBER_AND_VERSION )
+    if ( *value_ptr != CRT0_MAGIC_NUMBER_AND_VERSION )
         die(ERR_MSG_ID_0);
 
 
