@@ -4,7 +4,8 @@
 /**
  * @brief File format version number
  *
- * @warning MUST REMAIN SYNCHRONIZED with scripts/build_fae.py's definition
+ * @warning MUST REMAIN SYNCHRONIZED with scripts/build_fae.py's definition.
+ * @warning MUST REMAIN SYNCHRONIZED with xipfs's driver definition.
  */
 #define CRT0_MAGIC_NUMBER_AND_VERSION ((uint32_t)0xFACADE11)
 
