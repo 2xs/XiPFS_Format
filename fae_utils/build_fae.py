@@ -280,7 +280,7 @@ if __name__ == '__main__':
         export_relocation_tables(                              \
             elf_file, FAEConstants.EXPORTED_RELOCATION_TABLES, \
             relocation_bytearray)
-        metadata_size = len(array_of_bytes)
+        metadata_size = len(crt0_bytearray) + 4 + len(relocation_bytearray)
 
         # Formerly known as partition.fae
         partition_bytearray = bytearray()
